@@ -4,9 +4,16 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 description = "A pure-Rust FIX protocol engine built natively on tokio"
+authors = ["Debdatta Basu <debdatta.basu91@gmail.com>"]
 license = "MIT OR Apache-2.0"
+readme = "README.md"
+documentation = "https://docs.rs/quickfix-tokio"
+repository = "https://github.com/debdattabasu/quickfix-tokio"
+homepage = "https://github.com/debdattabasu/quickfix-tokio"
 keywords = ["fix", "quickfix", "trading", "protocol", "tokio"]
 categories = ["network-programming", "asynchronous", "finance"]
+# The vendored reference engines are dev-only context, never shipped in the crate.
+exclude = ["/reference", "/target"]
 
 [features]
 default = ["fix44", "tls", "decimal"]

@@ -6,6 +6,8 @@
 //! task per session that owns all session state, with sockets and API
 //! handles connected purely by channels.
 //!
+//! The engine is written entirely in safe Rust (`#![forbid(unsafe_code)]`).
+//!
 //! ```no_run
 //! use std::sync::Arc;
 //! use quickfix_tokio::{Application, Engine, Settings, MemoryStoreFactory, TracingLogFactory};
@@ -24,6 +26,7 @@
 //! # Ok(())
 //! # }
 //! ```
+#![forbid(unsafe_code)]
 
 pub mod application;
 pub mod datadictionary;

@@ -1,14 +1,24 @@
 # quickfix-tokio
 
-A pure-Rust FIX protocol engine built natively on tokio. No C++ bindings, no
-background threads — every session is a single tokio task wired to its socket
-and to your code purely by channels.
+[![Crates.io](https://img.shields.io/crates/v/quickfix-tokio.svg)](https://crates.io/crates/quickfix-tokio)
+[![Documentation](https://docs.rs/quickfix-tokio/badge.svg)](https://docs.rs/quickfix-tokio)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
-Protocol behavior is ported from the reference QuickFIX engines vendored in
-`reference/`: [QuickFIX C++](reference/quickfix-cpp) (canonical session
-rules), [quickfix-go](reference/quickfix-go) (the concurrency blueprint:
-one owner per session), and [QuickFIX/n](reference/quickfixn) (acceptance
-test format).
+A pure-Rust FIX protocol engine built natively on tokio. No C++ bindings, no
+background threads, no `unsafe` — every session is a single tokio task wired
+to its socket and to your code purely by channels.
+
+Protocol behavior is ported from the three reference QuickFIX engines:
+[QuickFIX C++](https://github.com/quickfix/quickfix) (canonical session
+rules), [quickfix-go](https://github.com/quickfixgo/quickfix) (the
+concurrency blueprint — one owner per session), and
+[QuickFIX/n](https://github.com/connamara/quickfixn) (acceptance test
+format).
+
+> **Status:** `0.1.0`. The protocol core is exercised by the full QuickFIX
+> acceptance suite (see below) and the API is usable today, but this is a
+> young library — the surface may still shift before `1.0`. Requires Rust
+> 1.85+ (edition 2024).
 
 ## Quick start
 
@@ -83,6 +93,11 @@ Two-process (run the executor first, then the client in another terminal):
 
 - `executor` / `order_client` — a sell-side acceptor that fills a
   NewOrderSingle, and a buy-side initiator that sends one and prints the fill.
+  These use the `Application` **callback trait**.
+- `events_executor` / `events_client` — the same pair rewritten with
+  [`event_channel()`](#two-ways-to-drive-the-engine), the **channel surface**.
+  The executor drains events with *no `Application` impl at all*; the client
+  drives orders and fills from one `select!` loop.
 
 Self-contained (both sides in one process, just `cargo run --example <name>`):
 
@@ -111,8 +126,8 @@ let mut order = NewOrderSingle::new(
     "ORDER-1", fields::Side::BUY, UtcTimestamp::now(), fields::OrdType::LIMIT,
 );
 order.set_symbol("TSLA");
-order.set_order_qty(100.0);
-order.set_price(101.25);
+order.set_order_qty(dec!(100));      // Amount is exact decimal by default
+order.set_price(dec!(101.25));
 session.send(order.into()).await?;
 
 // Inbound dispatch:
@@ -159,8 +174,10 @@ Generated code is committed; re-run only when specs change.
   one-goroutine-per-session model, minus the goroutine-side mutexes.
 - **Timers are part of the loop.** Heartbeat generation, TestRequest
   escalation (1.2×, 2.4×… of HeartBtInt), logon/logout timeouts, and
-  peer-death detection (2.4× HeartBtInt) are evaluated on a 100 ms tick of
-  the same `select!` — no timer threads.
+  peer-death detection (2.4× HeartBtInt) fire at exact deadlines
+  (`sleep_until`, recomputed each iteration) in the same `select!`; a
+  separate 1 s tick drives schedule (session-window) checks. No timer
+  threads. This is quickfix-go's event-driven timer model.
 - **Sockets are dumb.** The read task frames bytes (`8=` resync, BodyLength
   jump, `10=` check — the classic parser) and forwards complete messages;
   the write task drains an outbound channel. Disconnects propagate as channel
@@ -169,6 +186,44 @@ Generated code is committed; re-run only when specs change.
   applies backpressure to exactly that session. Don't `await` the same
   session's handle inside its own callback (deadlock) — forward to another
   task, as the executor example shows.
+
+### Two ways to drive the engine
+
+The `Application` trait is the canonical surface — the seven async callbacks
+every QuickFIX user already knows (`from_app`, `to_app`, `on_logon`…). It's
+the right tool for the **decision hooks**: `to_app`→`DoNotSend`,
+`from_admin`→`RejectLogon`, `to_admin` credential-stamping all need a
+synchronous verdict the engine waits on, which is exactly an awaited method.
+
+For everything else, `event_channel()` is the tokio-native alternative. It
+returns an `Application` to hand to `Engine::start` plus an
+`mpsc::UnboundedReceiver<SessionEvent>` you drain from your own task or
+`select!` loop:
+
+```rust
+let (app, mut events) = quickfix_tokio::event_channel();
+let engine = Engine::start(&settings, Arc::new(app), store, log).await?;
+let session = engine.session("FIX.4.4", "CLIENT", "SERVER").unwrap();
+
+loop {
+    tokio::select! {
+        Some(ev) = events.recv() => match ev {
+            SessionEvent::LoggedOn(_)   => session.send(order()).await?,
+            SessionEvent::App(msg, _)   => handle(msg), // your logic, off the protocol task
+            _ => {}
+        },
+        cmd = strategy.recv() => session.send(cmd?.into()).await?,
+    }
+}
+```
+
+This retires both callback footguns: the channel is unbounded so forwarding
+never stalls the protocol task, and inbound events plus outbound
+`SessionHandle` sends share one loop with no reentrancy hazard. It's
+**notify-only** — it can't carry the decision hooks above, so for vetoes you
+implement the trait. The client case is where it shines: a client is a
+send-and-react loop, which one `select!` expresses directly instead of
+fragmenting across `from_app` and a spawned sender task.
 
 Modules: `message`/`field_map`/`value` (wire model — order-preserving, so
 repeating groups round-trip byte-exactly without Go's raw-body splicing
@@ -260,3 +315,21 @@ right after a queue replay).
 over loopback TCP: logon/exchange/logout, heartbeat keepalive, TestRequest
 answering, dictionary rejects, seqnum-too-low logout, and a full
 gap → ResendRequest → GapFill → stash-replay recovery.
+
+## License
+
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or
+  <https://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or
+  <https://opensource.org/licenses/MIT>)
+
+at your option.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in the work by you, as defined in the Apache-2.0
+license, shall be dual licensed as above, without any additional terms or
+conditions.
