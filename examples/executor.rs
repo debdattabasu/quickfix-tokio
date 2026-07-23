@@ -1,5 +1,5 @@
-//! A minimal sell-side executor: accepts FIX 4.4 sessions on port 9876 and
-//! fills every NewOrderSingle it receives.
+//! A minimal sell-side executor using the typed FIX 4.4 API: accepts
+//! sessions on port 9876 and fills every NewOrderSingle it receives.
 //!
 //! Note the reply pattern: `from_app` runs on the session's own task, so it
 //! must not *wait* on `SessionHandle::send` for that same session. Instead
@@ -10,6 +10,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use quickfix_tokio::fix44::messages::execution_report::ExecutionReport;
+use quickfix_tokio::fix44::messages::new_order_single::NewOrderSingle;
+use quickfix_tokio::fix44::{AnyMessage, classify, fields};
 use quickfix_tokio::{
     Application, ApplicationError, Engine, MemoryStoreFactory, Message, SessionId, Settings,
     TracingLogFactory, UtcTimestamp,
@@ -17,7 +20,7 @@ use quickfix_tokio::{
 use tokio::sync::mpsc;
 
 struct Executor {
-    orders_tx: mpsc::UnboundedSender<(SessionId, Message)>,
+    orders_tx: mpsc::UnboundedSender<(SessionId, NewOrderSingle)>,
 }
 
 #[async_trait::async_trait]
@@ -33,9 +36,9 @@ impl Application for Executor {
         msg: &Message,
         session_id: &SessionId,
     ) -> Result<(), ApplicationError> {
-        match msg.msg_type().unwrap_or_default().as_str() {
-            "D" => {
-                let _ = self.orders_tx.send((session_id.clone(), msg.clone()));
+        match classify(msg.clone()) {
+            AnyMessage::NewOrderSingle(order) => {
+                let _ = self.orders_tx.send((session_id.clone(), order));
                 Ok(())
             }
             _ => Err(ApplicationError::UnsupportedMessageType),
@@ -43,23 +46,28 @@ impl Application for Executor {
     }
 }
 
-fn fill_for(order: &Message, exec_seq: u64) -> Message {
-    let get = |tag| order.body.get_string(tag).unwrap_or_default();
-    let qty = get(38);
-    let mut er = Message::with_type("8"); // ExecutionReport
-    er.set(37, format!("ORD-{exec_seq}").as_str()); // OrderID
-    er.set(17, format!("EXEC-{exec_seq}").as_str()); // ExecID
-    er.set(150, 'F'); // ExecType = Trade
-    er.set(39, '2'); // OrdStatus = Filled
-    er.set(11, get(11).as_str()); // ClOrdID
-    er.set(55, get(55).as_str()); // Symbol
-    er.set(54, get(54).as_str()); // Side
-    er.set(151, 0); // LeavesQty
-    er.set(14, qty.as_str()); // CumQty
-    er.set(31, "100.00"); // LastPx
-    er.set(32, qty.as_str()); // LastQty
-    er.set(6, "100.00"); // AvgPx
-    er.set(60, UtcTimestamp::now()); // TransactTime
+fn fill_for(order: &NewOrderSingle, exec_seq: u64) -> ExecutionReport {
+    let qty = order.order_qty().unwrap_or(0.0);
+    let price = order.price().unwrap_or(100.0); // market orders "fill" at 100
+    let mut er = ExecutionReport::new(
+        format!("ORD-{exec_seq}"),
+        format!("EXEC-{exec_seq}"),
+        fields::ExecType::TRADE,
+        fields::OrdStatus::FILLED,
+        order.side().unwrap_or(fields::Side::BUY),
+        0.0,   // LeavesQty
+        qty,   // CumQty
+        price, // AvgPx
+    );
+    if let Ok(cl_ord_id) = order.cl_ord_id() {
+        er.set_cl_ord_id(cl_ord_id);
+    }
+    if let Ok(symbol) = order.symbol() {
+        er.set_symbol(symbol);
+    }
+    er.set_last_px(price);
+    er.set_last_qty(qty);
+    er.set_transact_time(UtcTimestamp::now());
     er
 }
 
@@ -74,7 +82,8 @@ async fn main() -> quickfix_tokio::Result<()> {
          SenderCompID=EXECUTOR\n\
          TargetCompID=CLIENT\n\
          SocketAcceptPort=9876\n\
-         HeartBtInt=30\n",
+         HeartBtInt=30\n\
+         DataDictionary=spec/FIX44.xml\n",
     )?;
 
     let (orders_tx, mut orders_rx) = mpsc::unbounded_channel();
@@ -91,16 +100,17 @@ async fn main() -> quickfix_tokio::Result<()> {
     while let Some((session_id, order)) = orders_rx.recv().await {
         let n = exec_count.fetch_add(1, Ordering::Relaxed) + 1;
         println!(
-            "filling order {} for {}",
-            order.body.get_string(11).unwrap_or_default(),
-            session_id
+            "filling {} x {} for {}",
+            order.order_qty().unwrap_or(0.0),
+            order.symbol().unwrap_or_default(),
+            order.cl_ord_id().unwrap_or_default(),
         );
         if let Some(handle) = engine.session(
             &session_id.begin_string,
             &session_id.sender_comp_id,
             &session_id.target_comp_id,
         ) {
-            if let Err(e) = handle.send(fill_for(&order, n)).await {
+            if let Err(e) = handle.send(fill_for(&order, n).into()).await {
                 eprintln!("failed to send fill: {e}");
             }
         }

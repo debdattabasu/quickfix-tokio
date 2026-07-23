@@ -28,6 +28,8 @@
 pub mod application;
 pub mod datadictionary;
 pub mod engine;
+#[cfg(feature = "fix44")]
+pub mod fix44;
 pub mod error;
 pub mod field_map;
 pub mod log;

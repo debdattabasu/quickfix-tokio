@@ -8,6 +8,11 @@ license = "MIT OR Apache-2.0"
 keywords = ["fix", "quickfix", "trading", "protocol", "tokio"]
 categories = ["network-programming", "asynchronous", "finance"]
 
+[features]
+default = ["fix44"]
+# Typed messages generated from spec/FIX44.xml (see src/bin/generate-fix.rs).
+fix44 = []
+
 [dependencies]
 tokio = { version = "1", features = ["net", "io-util", "time", "sync", "rt", "macros", "fs"] }
 bytes = "1"

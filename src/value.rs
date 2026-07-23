@@ -37,6 +37,12 @@ impl FixEncode for &[u8] {
     }
 }
 
+impl FixEncode for Vec<u8> {
+    fn encode(&self, buf: &mut Vec<u8>) {
+        buf.extend_from_slice(self);
+    }
+}
+
 impl FixEncode for char {
     fn encode(&self, buf: &mut Vec<u8>) {
         let mut b = [0u8; 4];

@@ -1,11 +1,14 @@
-//! A minimal buy-side client: connects to the executor example, sends one
-//! order, prints the fill.
+//! A minimal buy-side client using the typed FIX 4.4 API: connects to the
+//! executor example, sends one order, prints the fill.
 //!
 //! Run `cargo run --example executor` first, then
 //! `cargo run --example order_client`.
 
 use std::sync::Arc;
 
+use quickfix_tokio::fix44::messages::execution_report::ExecutionReport;
+use quickfix_tokio::fix44::messages::new_order_single::NewOrderSingle;
+use quickfix_tokio::fix44::{AnyMessage, classify, fields};
 use quickfix_tokio::{
     Application, ApplicationError, Engine, MemoryStoreFactory, Message, SessionId, Settings,
     TracingLogFactory, UtcTimestamp,
@@ -13,7 +16,7 @@ use quickfix_tokio::{
 use tokio::sync::mpsc;
 
 struct Client {
-    fills_tx: mpsc::UnboundedSender<Message>,
+    fills_tx: mpsc::UnboundedSender<ExecutionReport>,
 }
 
 #[async_trait::async_trait]
@@ -26,7 +29,9 @@ impl Application for Client {
         msg: &Message,
         _session_id: &SessionId,
     ) -> Result<(), ApplicationError> {
-        let _ = self.fills_tx.send(msg.clone());
+        if let AnyMessage::ExecutionReport(er) = classify(msg.clone()) {
+            let _ = self.fills_tx.send(er);
+        }
         Ok(())
     }
 }
@@ -44,7 +49,8 @@ async fn main() -> quickfix_tokio::Result<()> {
          SocketConnectHost=127.0.0.1\n\
          SocketConnectPort=9876\n\
          HeartBtInt=30\n\
-         ReconnectInterval=2\n",
+         ReconnectInterval=2\n\
+         DataDictionary=spec/FIX44.xml\n",
     )?;
 
     let (fills_tx, mut fills_rx) = mpsc::unbounded_channel();
@@ -57,26 +63,30 @@ async fn main() -> quickfix_tokio::Result<()> {
     .await?;
     let session = engine.session("FIX.4.4", "CLIENT", "EXECUTOR").unwrap();
 
-    // Wait for logon, then place an order.
+    // Wait for logon, then place a typed order.
     while !session.is_logged_on().await {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
-    let mut order = Message::with_type("D"); // NewOrderSingle
-    order.set(11, "ORDER-1"); // ClOrdID
-    order.set(55, "TSLA"); // Symbol
-    order.set(54, '1'); // Side = Buy
-    order.set(38, 100); // OrderQty
-    order.set(40, '1'); // OrdType = Market
-    order.set(60, UtcTimestamp::now()); // TransactTime
-    session.send(order).await?;
+    let mut order = NewOrderSingle::new(
+        "ORDER-1",
+        fields::Side::BUY,
+        UtcTimestamp::now(),
+        fields::OrdType::LIMIT,
+    );
+    order.set_symbol("TSLA");
+    order.set_order_qty(100.0);
+    order.set_price(101.25);
+    session.send(order.into()).await?;
     println!("order sent, waiting for fill...");
 
     if let Some(fill) = fills_rx.recv().await {
         println!(
-            "filled: ClOrdID={} status={} avgpx={}",
-            fill.body.get_string(11).unwrap_or_default(),
-            fill.body.get_string(39).unwrap_or_default(),
-            fill.body.get_string(6).unwrap_or_default(),
+            "filled: {} {} x {} @ {} (status {})",
+            fill.cl_ord_id().unwrap_or_default(),
+            fill.cum_qty().unwrap_or(0.0),
+            fill.symbol().unwrap_or_default(),
+            fill.avg_px().unwrap_or(0.0),
+            fill.ord_status().map(|c| c.to_string()).unwrap_or_default(),
         );
     }
 

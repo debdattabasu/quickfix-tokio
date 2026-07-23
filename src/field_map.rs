@@ -5,6 +5,14 @@ use crate::error::ConversionError;
 use crate::message::Tag;
 use crate::value::{FixDecode, FixEncode};
 
+/// A typed FIX field: a marker type carrying its tag number and value type.
+/// Implementations are code-generated from the spec XMLs (see the `fix44`
+/// module and the `generate-fix` binary).
+pub trait Field {
+    const TAG: Tag;
+    type Value: FixEncode + FixDecode;
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TagValue {
     pub tag: Tag,
@@ -63,6 +71,24 @@ impl FieldMap {
 
     pub fn get_string(&self, tag: Tag) -> Result<String, ConversionError> {
         self.get::<String>(tag)
+    }
+
+    // ----- typed accessors (see [`Field`]) -----
+
+    pub fn get_field<F: Field>(&self) -> Result<F::Value, ConversionError> {
+        self.get::<F::Value>(F::TAG)
+    }
+
+    pub fn get_field_opt<F: Field>(&self) -> Result<Option<F::Value>, ConversionError> {
+        self.get_opt::<F::Value>(F::TAG)
+    }
+
+    pub fn set_field<F: Field>(&mut self, value: F::Value) {
+        self.set(F::TAG, value);
+    }
+
+    pub fn has_field<F: Field>(&self) -> bool {
+        self.contains(F::TAG)
     }
 
     /// Replace the first occurrence of `tag` (keeping its position), or append.

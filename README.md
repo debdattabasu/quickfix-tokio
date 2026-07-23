@@ -68,6 +68,43 @@ DataDictionary=spec/FIX44.xml
 
 Try it: `cargo run --example executor` then `cargo run --example order_client`.
 
+## Typed messages
+
+The `fix44` module (on by default via the `fix44` cargo feature) provides
+typed messages generated from `spec/FIX44.xml` — 92 message types, 953 field
+markers with enum constants, and repeating-group structs:
+
+```rust
+use quickfix_tokio::fix44::{classify, fields, AnyMessage};
+use quickfix_tokio::fix44::messages::new_order_single::NewOrderSingle;
+
+let mut order = NewOrderSingle::new(
+    "ORDER-1", fields::Side::BUY, UtcTimestamp::now(), fields::OrdType::LIMIT,
+);
+order.set_symbol("TSLA");
+order.set_order_qty(100.0);
+order.set_price(101.25);
+session.send(order.into()).await?;
+
+// Inbound dispatch:
+match classify(msg.clone()) {
+    AnyMessage::NewOrderSingle(order) => println!("{}", order.cl_ord_id()?),
+    AnyMessage::ExecutionReport(er) => println!("{}", er.avg_px()?),
+    _ => {}
+}
+```
+
+Constructors take the message's required fields; every field gets
+`x()`/`set_x()`/`has_x()` accessors typed per the dictionary (ints as `i64`,
+prices/quantities as `f64`, timestamps as `UtcTimestamp`, enums as
+constants like `fields::Side::BUY`). Repeating groups are structs with the
+same accessor pattern (`order.set_no_party_ids([...])`). Message structs
+`Deref` to [`Message`](src/message.rs) for anything not covered.
+
+The generator is part of the crate: `cargo run --bin generate-fix --
+spec/FIX42.xml src/fix42` regenerates or targets another FIX version.
+Generated code is committed; re-run only when specs change.
+
 ## Architecture
 
 ```
@@ -160,10 +197,10 @@ right after a queue replay).
 
 - Session schedules (`StartTime`/`EndTime`, weekly windows) — sessions are
   non-stop; connect/disconnect is driven by the engine lifecycle
-- `NextExpectedMsgSeqNum(789)` logon sync, `ResendRequestChunkSize`
+- `NextExpectedMsgSeqNum(789)` logon sync
 - TLS, per-message fsync durability, SQL/Mongo stores
-- Typed message/field codegen from the XML specs (the `spec/` files and the
-  dictionary parser are the input for it)
+- Decimal price/qty types (typed accessors use `f64`; use the raw
+  `FieldMap` string accessors where exact decimals matter)
 
 ## Tests
 

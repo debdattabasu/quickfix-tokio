@@ -74,6 +74,8 @@ pub struct FieldDef {
     pub field_type: FieldType,
     /// Allowed values (enum fields); empty = unrestricted.
     pub values: HashSet<String>,
+    /// Enum values with their descriptions, in spec order (for codegen).
+    pub enum_values: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -84,6 +86,8 @@ pub struct GroupDef {
     pub tags: HashSet<Tag>,
     pub required: Vec<Tag>,
     pub groups: HashMap<Tag, GroupDef>,
+    /// Direct members in spec order (nested groups appear as their counter).
+    pub member_order: Vec<Tag>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -93,6 +97,9 @@ pub struct MessageDef {
     pub tags: HashSet<Tag>,
     pub required: Vec<Tag>,
     pub groups: HashMap<Tag, GroupDef>,
+    /// Top-level fields in spec order, components expanded in place
+    /// (groups appear as their counter tag).
+    pub field_order: Vec<Tag>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -218,14 +225,20 @@ impl DataDictionary {
                 if char_is_string && field_type == FieldType::Char {
                     field_type = FieldType::String;
                 }
-                let values = f
+                let enum_values: Vec<(String, String)> = f
                     .children
                     .iter()
                     .filter(|c| c.name == "value")
-                    .filter_map(|c| c.attrs.get("enum").cloned())
+                    .filter_map(|c| {
+                        c.attrs.get("enum").map(|v| {
+                            (v.clone(), c.attrs.get("description").cloned().unwrap_or_default())
+                        })
+                    })
                     .collect();
+                let values = enum_values.iter().map(|(v, _)| v.clone()).collect();
                 dd.tags_by_name.insert(name.clone(), tag);
-                dd.fields_by_tag.insert(tag, FieldDef { tag, name, field_type, values });
+                dd.fields_by_tag
+                    .insert(tag, FieldDef { tag, name, field_type, values, enum_values });
             }
         }
 
@@ -242,13 +255,13 @@ impl DataDictionary {
         // Header / trailer.
         if let Some(header) = child(&fix, "header") {
             let mut def = MessageDef::default();
-            dd.collect(header, &components, &mut def.tags, &mut def.required, &mut def.groups)?;
+            dd.collect_message(header, &components, &mut def)?;
             dd.header_tags = def.tags;
             dd.header_required = def.required;
         }
         if let Some(trailer) = child(&fix, "trailer") {
             let mut def = MessageDef::default();
-            dd.collect(trailer, &components, &mut def.tags, &mut def.required, &mut def.groups)?;
+            dd.collect_message(trailer, &components, &mut def)?;
             dd.trailer_tags = def.tags;
             dd.trailer_required = def.required;
         }
@@ -265,7 +278,7 @@ impl DataDictionary {
                         .ok_or_else(|| Error::Dictionary("message without msgtype".into()))?,
                     ..Default::default()
                 };
-                dd.collect(m, &components, &mut def.tags, &mut def.required, &mut def.groups)?;
+                dd.collect_message(m, &components, &mut def)?;
                 dd.messages.insert(def.msg_type.clone(), def);
             }
         }
@@ -278,6 +291,17 @@ impl DataDictionary {
     }
 
     /// Recursively collect fields/components/groups of a message-like node.
+    fn collect_message(
+        &self,
+        node: &Node,
+        components: &HashMap<&str, &Node>,
+        def: &mut MessageDef,
+    ) -> Result<()> {
+        // Split borrows for the recursive walk.
+        let MessageDef { tags, required, groups, field_order, .. } = def;
+        self.collect(node, components, tags, required, groups, field_order)
+    }
+
     fn collect(
         &self,
         node: &Node,
@@ -285,6 +309,7 @@ impl DataDictionary {
         tags_out: &mut HashSet<Tag>,
         required_out: &mut Vec<Tag>,
         groups_out: &mut HashMap<Tag, GroupDef>,
+        order_out: &mut Vec<Tag>,
     ) -> Result<()> {
         for c in &node.children {
             let required = c.attrs.get("required").map(|r| r == "Y").unwrap_or(false);
@@ -295,7 +320,9 @@ impl DataDictionary {
                         .tags_by_name
                         .get(&name)
                         .ok_or_else(|| Error::Dictionary(format!("unknown field {name}")))?;
-                    tags_out.insert(tag);
+                    if tags_out.insert(tag) {
+                        order_out.push(tag);
+                    }
                     if required {
                         required_out.push(tag);
                     }
@@ -307,7 +334,7 @@ impl DataDictionary {
                         .ok_or_else(|| Error::Dictionary(format!("unknown component {name}")))?;
                     // Component fields are required only if the component is.
                     let mut comp_required = Vec::new();
-                    self.collect(def, components, tags_out, &mut comp_required, groups_out)?;
+                    self.collect(def, components, tags_out, &mut comp_required, groups_out, order_out)?;
                     if required {
                         required_out.extend(comp_required);
                     }
@@ -318,7 +345,9 @@ impl DataDictionary {
                         .tags_by_name
                         .get(&name)
                         .ok_or_else(|| Error::Dictionary(format!("unknown group {name}")))?;
-                    tags_out.insert(counter);
+                    if tags_out.insert(counter) {
+                        order_out.push(counter);
+                    }
                     if required {
                         required_out.push(counter);
                     }
@@ -328,6 +357,7 @@ impl DataDictionary {
                     g.delimiter = *member_order
                         .first()
                         .ok_or_else(|| Error::Dictionary(format!("empty group {name}")))?;
+                    g.member_order = member_order;
                     // Group member tags also count as "in message" for
                     // tag-allowed checks.
                     tags_out.extend(g.tags.iter().copied());
@@ -385,6 +415,7 @@ impl DataDictionary {
                     nested.delimiter = *nested_order
                         .first()
                         .ok_or_else(|| Error::Dictionary(format!("empty group {name}")))?;
+                    nested.member_order = nested_order;
                     group.tags.extend(nested.tags.iter().copied());
                     group.groups.insert(counter, nested);
                 }
