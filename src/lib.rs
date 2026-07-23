@@ -46,7 +46,9 @@ mod tls;
 mod transport;
 pub mod value;
 
-pub use application::{Application, ApplicationError, DoNotSend};
+pub use application::{
+    Application, ApplicationError, ChannelApplication, DoNotSend, SessionEvent, event_channel,
+};
 pub use datadictionary::{DataDictionary, ValidationSettings};
 pub use engine::Engine;
 pub use error::{Error, RejectError, Result, SessionRejectReason};
