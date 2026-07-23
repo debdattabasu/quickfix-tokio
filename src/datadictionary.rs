@@ -394,6 +394,22 @@ impl DataDictionary {
         Ok(())
     }
 
+    /// Combine a FIXT transport dictionary (header/trailer/admin messages)
+    /// with an application dictionary (app messages and fields) into one
+    /// effective dictionary for validation.
+    pub fn merged_with_app(mut self, app: &DataDictionary) -> DataDictionary {
+        for (tag, field) in &app.fields_by_tag {
+            self.fields_by_tag.entry(*tag).or_insert_with(|| field.clone());
+        }
+        for (name, tag) in &app.tags_by_name {
+            self.tags_by_name.entry(name.clone()).or_insert(*tag);
+        }
+        for (msg_type, def) in &app.messages {
+            self.messages.entry(msg_type.clone()).or_insert_with(|| def.clone());
+        }
+        self
+    }
+
     /// Reorder a message body into the canonical form the reference engines
     /// produce: top-level fields ascending by tag, with each repeating-group
     /// block kept intact (in received/insertion order) under its counter tag.
@@ -519,15 +535,9 @@ impl DataDictionary {
             }
         }
 
-        // Per-field checks.
-        for section in [&msg.header, &msg.body, &msg.trailer] {
-            let is_body = std::ptr::eq(section, &msg.body);
-            for f in section.iter() {
-                self.check_field(f.tag, &f.value, is_body, def, settings)?;
-            }
-        }
-
-        // Group counts: declared NumInGroup vs actual delimiter count.
+        // Group counts (declared NumInGroup vs actual delimiter count) —
+        // checked before per-field content so a count mismatch wins over
+        // value errors inside the group.
         for group in def.groups.values() {
             if let Some(raw) = msg.body.get_raw(group.counter) {
                 let declared: usize = std::str::from_utf8(raw)
@@ -547,6 +557,14 @@ impl DataDictionary {
                         group.counter,
                     ));
                 }
+            }
+        }
+
+        // Per-field checks.
+        for section in [&msg.header, &msg.body, &msg.trailer] {
+            let is_body = std::ptr::eq(section, &msg.body);
+            for f in section.iter() {
+                self.check_field(f.tag, &f.value, is_body, def, settings)?;
             }
         }
         Ok(())

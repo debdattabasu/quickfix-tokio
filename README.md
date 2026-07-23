@@ -109,14 +109,19 @@ loop), `transport` (acceptor/initiator/socket tasks), `engine` (wiring),
 
 ## Acceptance suite
 
-The engine passes the **classic QuickFIX acceptance test suite** — 297
-protocol-conformance scripts across FIX 4.0/4.1/4.2/4.3/4.4, the same `.def`
-scripts the reference engines certify with (vendored from QuickFIX/n into
-`acceptance/definitions/`). The runner ([tests/acceptance.rs](tests/acceptance.rs))
-is a Rust port of QuickFIX/n's Runner/ReflectorClient: it drives a raw TCP
-client (or several) against a live engine, with `<TIME±n>` decoration,
-automatic BodyLength/CheckSum insertion, and byte-for-byte positional
-matching of every engine response. Run with `cargo test --test acceptance`.
+The engine passes the **classic QuickFIX acceptance test suite** — 490
+protocol-conformance scripts across eleven fixtures: FIX 4.0 through 4.4,
+FIXT.1.1 with FIX 5.0/5.0SP1/5.0SP2, the no-reset FIX 4.4 variant, the misc
+suite (LastMsgSeqNumProcessed(369), chunked ResendRequests, sub/location ID
+routing, logout-before-timeout-disconnect), and the CME enhanced-resend
+suite. These are the same `.def` scripts the reference engines certify with
+(vendored from QuickFIX/n into `acceptance/definitions/`). The runner
+([tests/acceptance.rs](tests/acceptance.rs)) is a Rust port of QuickFIX/n's
+Runner/ReflectorClient: it drives a raw TCP client (or several) against a
+live engine, with `<TIME±n>` decoration, automatic BodyLength/CheckSum
+insertion, and byte-for-byte positional matching of every engine response.
+Run with `cargo test --test acceptance`. The only defs not run are
+`future/` and `misc/broken/`, which QuickFIX/n also parks as known-failing.
 
 Conformance details this suite locked in: canonical field ordering (header
 8,9,35 then ascending; bodies ascending with repeating-group blocks intact),
@@ -143,7 +148,13 @@ right after a queue replay).
   tags, group counts, out-of-order detection) from stock QuickFIX XML specs
 - Memory and file-backed stores (QuickFIX C++-style file layout), file and
   tracing logs, classic INI settings
-- FIX 4.0–4.4 and FIXT.1.1 headers/trailers, ephemeral + persistent sessions
+- FIXT.1.1 sessions: Transport/AppDataDictionary split (admin messages
+  validate against the transport dictionary alone), DefaultApplVerID(1137)
+  enum mapping
+- LastMsgSeqNumProcessed(369), chunked ResendRequests
+  (`MaxMessagesInResendRequest`), `RequiresOrigSendingTime=N`,
+  `SendLogoutBeforeDisconnectFromTimeout`, sub/location ID identities
+- FIX 4.0–4.4 and FIXT.1.1, ephemeral + persistent sessions
 
 ## Not yet implemented
 
@@ -153,8 +164,6 @@ right after a queue replay).
 - TLS, per-message fsync durability, SQL/Mongo stores
 - Typed message/field codegen from the XML specs (the `spec/` files and the
   dictionary parser are the input for it)
-- FIX 5.0 / FIXT.1.1 acceptance coverage (needs the transport/app dictionary
-  split); the FIX 4.x suite is fully green
 
 ## Tests
 

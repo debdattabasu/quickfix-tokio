@@ -113,7 +113,11 @@ pub(crate) struct Session {
     store: Box<dyn MessageStore>,
     log: Box<dyn Log>,
     app: Arc<dyn Application>,
+    /// Dictionary for app-message validation (transport+app merged on FIXT).
     dictionary: Option<Arc<DataDictionary>>,
+    /// Dictionary for admin-message validation (transport-only on FIXT —
+    /// app-level fields are unknown tags in admin messages).
+    admin_dictionary: Option<Arc<DataDictionary>>,
     cmd_rx: mpsc::Receiver<Command>,
 
     inbound: Option<mpsc::Receiver<Bytes>>,
@@ -131,8 +135,14 @@ pub(crate) struct Session {
     last_sent: Instant,
     last_received: Instant,
     test_request_counter: u32,
-    /// Outstanding resend range we asked the peer for.
-    resend_range: Option<(u64, u64)>,
+    /// Outstanding resend range we asked the peer for:
+    /// (begin, full_end, current_chunk_end). With MaxMessagesInResendRequest
+    /// the range is requested in chunks; the next chunk goes out when the
+    /// current one completes.
+    resend_range: Option<(u64, u64, u64)>,
+    /// MsgSeqNum of the most recently received message (even if stashed or
+    /// rejected) — the value stamped into LastMsgSeqNumProcessed(369).
+    last_received_seq: u64,
     /// Raw messages received with too-high seqnums, replayed once the gap
     /// fills.
     stash: BTreeMap<u64, Bytes>,
@@ -149,6 +159,7 @@ impl Session {
         log: Box<dyn Log>,
         app: Arc<dyn Application>,
         dictionary: Option<Arc<DataDictionary>>,
+        admin_dictionary: Option<Arc<DataDictionary>>,
     ) -> SessionHandle {
         let (cmd_tx, cmd_rx) = mpsc::channel(64);
         let handle = SessionHandle { id: cfg.session_id.clone(), cmd_tx };
@@ -159,6 +170,7 @@ impl Session {
             log,
             app,
             dictionary,
+            admin_dictionary,
             cmd_rx,
             inbound: None,
             outbound: None,
@@ -173,6 +185,7 @@ impl Session {
             last_received: Instant::now(),
             test_request_counter: 0,
             resend_range: None,
+            last_received_seq: 0,
             stash: BTreeMap::new(),
             last_processed_was_queued: false,
         };
@@ -347,6 +360,9 @@ impl Session {
             return;
         }
         if since_recv >= mul(hbi, 2.4) {
+            if self.cfg.send_logout_before_disconnect_from_timeout {
+                let _ = self.initiate_logout("").await;
+            }
             self.disconnect("Timed out waiting for heartbeat").await;
         } else if since_recv >= mul(hbi, 1.2 * (self.test_request_counter + 1) as f64) {
             self.test_request_counter += 1;
@@ -379,6 +395,9 @@ impl Session {
             msg.header.set(tags::TARGET_LOCATION_ID, id.target_location_id.as_str());
         }
         msg.header.set(tags::MSG_SEQ_NUM, self.store.next_sender_seq_num());
+        if self.cfg.enable_last_msg_seq_num_processed {
+            msg.header.set(tags::LAST_MSG_SEQ_NUM_PROCESSED, self.last_received_seq);
+        }
         msg.stamp_sending_time(UtcTimestamp::new(
             chrono::Utc::now(),
             self.cfg.timestamp_precision,
@@ -447,7 +466,7 @@ impl Session {
             self.sent_reset = true;
         }
         if let Some(v) = &self.cfg.default_appl_ver_id {
-            logon.set(tags::DEFAULT_APPL_VER_ID, v.as_str());
+            logon.set(tags::DEFAULT_APPL_VER_ID, appl_ver_id_enum(v));
         }
         self.sent_logon = true;
         self.event("Initiated logon request");
@@ -472,7 +491,7 @@ impl Session {
             self.sent_reset = true;
         }
         if let Some(v) = &self.cfg.default_appl_ver_id {
-            logon.set(tags::DEFAULT_APPL_VER_ID, v.as_str());
+            logon.set(tags::DEFAULT_APPL_VER_ID, appl_ver_id_enum(v));
         }
         self.sent_logon = true;
         self.event("Responding to logon request");
@@ -563,15 +582,42 @@ impl Session {
     }
 
     async fn send_resend_request(&mut self, begin: u64, received: u64) -> Result<()> {
+        let full_end = received - 1;
         let mut rr = Message::with_type(msg_type::RESEND_REQUEST);
         rr.set(tags::BEGIN_SEQ_NO, begin);
-        // "To infinity": 0 for FIX >= 4.2, 999999 before.
-        let open_ended = self.cfg.session_id.begin_string.as_str() >= "FIX.4.2"
-            || self.cfg.session_id.is_fixt();
-        rr.set(tags::END_SEQ_NO, if open_ended { 0 } else { 999999u64 });
-        self.resend_range = Some((begin, received - 1));
-        self.event(&format!("Sent ResendRequest FROM: {begin} TO: {}", received - 1));
+        let chunk_end = match self.cfg.max_messages_in_resend_request {
+            // "To infinity": 0 for FIX >= 4.2, 999999 before.
+            0 => {
+                let open_ended = self.cfg.session_id.begin_string.as_str() >= "FIX.4.2"
+                    || self.cfg.session_id.is_fixt();
+                rr.set(tags::END_SEQ_NO, if open_ended { 0 } else { 999999u64 });
+                full_end
+            }
+            max => {
+                let chunk_end = full_end.min(begin + max - 1);
+                rr.set(tags::END_SEQ_NO, chunk_end);
+                chunk_end
+            }
+        };
+        self.resend_range = Some((begin, full_end, chunk_end));
+        self.event(&format!("Sent ResendRequest FROM: {begin} TO: {chunk_end}"));
         self.send_message(rr).await
+    }
+
+    /// After inbound processing: request the next chunk of an outstanding
+    /// resend range, or note that it has been satisfied.
+    async fn check_resend_chunks(&mut self) {
+        let Some((_, full_end, chunk_end)) = self.resend_range else { return };
+        let expected = self.store.next_target_seq_num();
+        if expected <= chunk_end {
+            return;
+        }
+        if expected <= full_end {
+            let _ = self.send_resend_request(expected, full_end + 1).await;
+        } else {
+            self.event(&format!("ResendRequest for messages FROM ... TO {full_end} has been satisfied"));
+            self.resend_range = None;
+        }
     }
 
     /// SequenceReset-GapFill covering `[begin, new_seq)`. Bypasses normal
@@ -607,6 +653,9 @@ impl Session {
                 return;
             }
         };
+        if let Ok(seq) = msg.seq_num() {
+            self.last_received_seq = seq;
+        }
         if let Err(Disconnect(reason)) = self.process(msg, raw).await {
             self.disconnect(&reason).await;
             return;
@@ -614,7 +663,9 @@ impl Session {
         self.last_processed_was_queued = false;
         if let Err(Disconnect(reason)) = self.drain_stash().await {
             self.disconnect(&reason).await;
+            return;
         }
+        self.check_resend_chunks().await;
     }
 
     /// Handle one parsed message (without stash draining).
@@ -642,8 +693,10 @@ impl Session {
 
         // Dictionary validation of all messages, admin included, before
         // dispatch (mirrors the C++ engine's ordering). Failures consume
-        // the seqnum.
-        if let Some(dd) = self.dictionary.clone() {
+        // the seqnum. FIXT admin messages validate against the transport
+        // dictionary alone.
+        let dd = if msg.is_admin() { &self.admin_dictionary } else { &self.dictionary };
+        if let Some(dd) = dd.clone() {
             if let Err(rej) = dd.validate(&msg, &self.cfg.validation) {
                 let _ = self.send_reject(&msg, &rej).await;
                 return Ok(());
@@ -758,13 +811,6 @@ impl Session {
                     return self.on_target_too_low(msg, seq, expected).await;
                 }
             }
-            // An in-range message may satisfy an outstanding resend request.
-            if let Some((_, end)) = self.resend_range {
-                if seq >= end {
-                    self.event(&format!("ResendRequest for messages FROM ... TO {end} has been satisfied"));
-                    self.resend_range = None;
-                }
-            }
         }
 
         self.last_received = Instant::now();
@@ -833,7 +879,7 @@ impl Session {
         }
         // PossDup replay of something we already have: validate and drop.
         let mt = msg.msg_type().unwrap_or_default();
-        if mt != msg_type::SEQUENCE_RESET {
+        if mt != msg_type::SEQUENCE_RESET && self.cfg.requires_orig_sending_time {
             match msg.header.get_opt::<UtcTimestamp>(tags::ORIG_SENDING_TIME) {
                 Ok(Some(orig)) => {
                     let sending = msg.header.get_opt::<UtcTimestamp>(tags::SENDING_TIME).ok().flatten();
@@ -1133,6 +1179,24 @@ async fn recv_opt(rx: &mut Option<mpsc::Receiver<Bytes>>) -> Option<Bytes> {
 
 fn mul(d: Duration, f: f64) -> Duration {
     Duration::from_secs_f64(d.as_secs_f64() * f)
+}
+
+/// DefaultApplVerID(1137) rides on the wire as the ApplVerID enum, not the
+/// BeginString-style name configured in settings.
+fn appl_ver_id_enum(configured: &str) -> &str {
+    match configured {
+        "FIX.2.7" => "0",
+        "FIX.3.0" => "1",
+        "FIX.4.0" => "2",
+        "FIX.4.1" => "3",
+        "FIX.4.2" => "4",
+        "FIX.4.3" => "5",
+        "FIX.4.4" => "6",
+        "FIX.5.0" => "7",
+        "FIX.5.0SP1" => "8",
+        "FIX.5.0SP2" => "9",
+        other => other, // already an enum value
+    }
 }
 
 /// Copy routing fields from a received message into a reply, reversed:

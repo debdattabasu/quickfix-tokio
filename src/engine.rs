@@ -47,16 +47,46 @@ impl Engine {
         let mut dictionaries: HashMap<String, Arc<DataDictionary>> = HashMap::new();
 
         for cfg in configs {
-            let dictionary = match (&cfg.use_data_dictionary, &cfg.data_dictionary) {
-                (true, Some(path)) => Some(match dictionaries.get(path) {
-                    Some(dd) => dd.clone(),
-                    None => {
-                        let dd = Arc::new(DataDictionary::load(path).await?);
-                        dictionaries.insert(path.clone(), dd.clone());
-                        dd
+            // App-message dictionary and admin-message dictionary. For FIXT
+            // these differ: app messages use transport+app merged, admin
+            // messages the transport dictionary alone.
+            let (dictionary, admin_dictionary) = if !cfg.use_data_dictionary {
+                (None, None)
+            } else {
+                match (&cfg.transport_data_dictionary, &cfg.app_data_dictionary) {
+                    (Some(transport), Some(app)) => {
+                        let merged_key = format!("{transport}+{app}");
+                        let (merged, transport_dd) = match (
+                            dictionaries.get(&merged_key),
+                            dictionaries.get(transport),
+                        ) {
+                            (Some(m), Some(t)) => (m.clone(), t.clone()),
+                            _ => {
+                                let t = Arc::new(DataDictionary::load(transport).await?);
+                                let a = DataDictionary::load(app).await?;
+                                let m = Arc::new((*t).clone().merged_with_app(&a));
+                                dictionaries.insert(merged_key, m.clone());
+                                dictionaries.insert(transport.clone(), t.clone());
+                                (m, t)
+                            }
+                        };
+                        (Some(merged), Some(transport_dd))
                     }
-                }),
-                _ => None,
+                    _ => match &cfg.data_dictionary {
+                        Some(path) => {
+                            let dd = match dictionaries.get(path) {
+                                Some(dd) => dd.clone(),
+                                None => {
+                                    let dd = Arc::new(DataDictionary::load(path).await?);
+                                    dictionaries.insert(path.clone(), dd.clone());
+                                    dd
+                                }
+                            };
+                            (Some(dd.clone()), Some(dd))
+                        }
+                        None => (None, None),
+                    },
+                }
             };
             let key = key_of(&cfg.session_id);
             if handles.contains_key(&key) {
@@ -72,7 +102,8 @@ impl Engine {
                 (cfg.socket_connect_host.clone(), cfg.socket_connect_port, cfg.reconnect_interval);
             let accept_port = cfg.socket_accept_port;
 
-            let handle = Session::spawn(cfg, store, log, app.clone(), dictionary);
+            let handle =
+                Session::spawn(cfg, store, log, app.clone(), dictionary, admin_dictionary);
             handles.insert(key.clone(), handle.clone());
 
             match connection_type {

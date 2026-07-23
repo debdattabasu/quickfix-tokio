@@ -126,7 +126,20 @@ pub struct SessionConfig {
     pub validate_length_checksum: bool,
     pub use_data_dictionary: bool,
     pub data_dictionary: Option<String>,
+    /// FIXT sessions: session-level dictionary (FIXT11.xml).
+    pub transport_data_dictionary: Option<String>,
+    /// FIXT sessions: application-level dictionary (FIX50.xml etc).
+    pub app_data_dictionary: Option<String>,
     pub validation: ValidationSettings,
+    /// Stamp LastMsgSeqNumProcessed(369) on every outgoing header.
+    pub enable_last_msg_seq_num_processed: bool,
+    /// Cap ResendRequests to this many messages per chunk (0 = unlimited,
+    /// EndSeqNo sent as 0/999999 "infinity").
+    pub max_messages_in_resend_request: u64,
+    /// Send a Logout before disconnecting on heartbeat timeout.
+    pub send_logout_before_disconnect_from_timeout: bool,
+    /// Require OrigSendingTime(122) on PossDup messages (default Y).
+    pub requires_orig_sending_time: bool,
     pub file_store_path: Option<String>,
     pub file_log_path: Option<String>,
     /// FIXT.1.1 sessions: DefaultApplVerID(1137) for our Logon.
@@ -272,6 +285,16 @@ impl SessionConfig {
             validate_length_checksum: get_bool(m, "ValidateLengthAndChecksum", true)?,
             use_data_dictionary: get_bool(m, "UseDataDictionary", true)?,
             data_dictionary: m.get("DataDictionary").cloned(),
+            transport_data_dictionary: m.get("TransportDataDictionary").cloned(),
+            app_data_dictionary: m.get("AppDataDictionary").cloned(),
+            enable_last_msg_seq_num_processed: get_bool(m, "EnableLastMsgSeqNumProcessed", false)?,
+            max_messages_in_resend_request: get_u64(m, "MaxMessagesInResendRequest", 0)?,
+            send_logout_before_disconnect_from_timeout: get_bool(
+                m,
+                "SendLogoutBeforeDisconnectFromTimeout",
+                false,
+            )?,
+            requires_orig_sending_time: get_bool(m, "RequiresOrigSendingTime", true)?,
             validation: ValidationSettings {
                 check_fields_out_of_order: get_bool(m, "ValidateFieldsOutOfOrder", true)?,
                 check_fields_have_values: get_bool(m, "ValidateFieldsHaveValues", true)?,

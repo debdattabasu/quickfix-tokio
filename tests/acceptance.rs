@@ -33,7 +33,9 @@ const SOH: u8 = 0x01;
 // ----- the AT application (mirrors QuickFIX/n ATApplication) -----
 
 struct ATApp {
-    begin_string: String,
+    /// Application-level FIX version (differs from BeginString for FIXT
+    /// sessions), used to mirror QF/n's per-version message handlers.
+    app_ver: String,
     echo_tx: mpsc::UnboundedSender<(SessionId, Message)>,
     cl_ord_ids: Mutex<HashSet<String>>,
 }
@@ -64,7 +66,7 @@ impl Application for ATApp {
         msg: &Message,
         session_id: &SessionId,
     ) -> Result<(), ApplicationError> {
-        let bs = self.begin_string.as_str();
+        let bs = self.app_ver.as_str();
         let mt = msg.msg_type().unwrap_or_default();
         match mt.as_str() {
             // NewOrderSingle: echo, deduping PossResend by ClOrdID.
@@ -280,7 +282,9 @@ struct Connection {
 
 impl Connection {
     async fn read_message(&mut self) -> Result<Vec<u8>, String> {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        // Generous: some defs wait out real heartbeat/test-request timers
+        // (e.g. misc/FIX42TestRequest waits ~36s between messages).
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
         loop {
             if let Frame::Message(raw) = extract_frame(&mut self.buf) {
                 return Ok(raw.to_vec());
@@ -296,7 +300,7 @@ impl Connection {
     }
 
     async fn expect_disconnect(&mut self) -> Result<(), String> {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
         loop {
             if let Frame::Message(m) = extract_frame(&mut self.buf) {
                 return Err(format!("expected disconnect, got message: {}", printable(&m)));
@@ -399,16 +403,28 @@ async fn run_def(path: &Path, port: u16) -> Result<(), String> {
     Ok(())
 }
 
-// ----- per-version fixtures -----
+// ----- suite fixtures -----
 
-async fn run_version(dir_name: &str, begin_string: &str, spec_file: &str) {
+struct Suite {
+    /// Directory under acceptance/definitions/.
+    dir: &'static str,
+    begin_string: &'static str,
+    /// Application-level FIX version for the AT app's handler table.
+    app_ver: &'static str,
+    /// Extra `[SESSION]` config lines (dictionaries, feature toggles, ...).
+    /// `{spec}` expands to the acceptance/spec directory.
+    extra_settings: &'static str,
+}
+
+async fn run_suite(suite: Suite) {
     let port = {
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         l.local_addr().unwrap().port()
     };
     // The defs were authored against QuickFIX/n's spec XMLs, which differ
     // slightly from quickfix-go's (e.g. FIX44 News group requirements).
-    let spec = format!("{}/acceptance/spec/{spec_file}", env!("CARGO_MANIFEST_DIR"));
+    let spec_dir = format!("{}/acceptance/spec", env!("CARGO_MANIFEST_DIR"));
+    let begin_string = suite.begin_string;
     let settings = Settings::parse(&format!(
         "[SESSION]\n\
          ConnectionType=acceptor\n\
@@ -417,16 +433,16 @@ async fn run_version(dir_name: &str, begin_string: &str, spec_file: &str) {
          TargetCompID=TW\n\
          SocketAcceptPort={port}\n\
          HeartBtInt=30\n\
-         ResetOnLogon=Y\n\
          LogonTimeout=2\n\
          LogoutTimeout=1\n\
-         DataDictionary={spec}\n"
+         {}\n",
+        suite.extra_settings.replace("{spec}", &spec_dir)
     ))
     .unwrap();
 
     let (echo_tx, mut echo_rx) = mpsc::unbounded_channel::<(SessionId, Message)>();
     let app = Arc::new(ATApp {
-        begin_string: begin_string.to_owned(),
+        app_ver: suite.app_ver.to_owned(),
         echo_tx,
         cl_ord_ids: Mutex::new(HashSet::new()),
     });
@@ -447,7 +463,7 @@ async fn run_version(dir_name: &str, begin_string: &str, spec_file: &str) {
 
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("acceptance/definitions")
-        .join(dir_name);
+        .join(suite.dir);
     let mut defs: Vec<PathBuf> = std::fs::read_dir(&dir)
         .unwrap_or_else(|e| panic!("cannot read {dir:?}: {e}"))
         .filter_map(|e| e.ok())
@@ -460,7 +476,7 @@ async fn run_version(dir_name: &str, begin_string: &str, spec_file: &str) {
     let mut failures = Vec::new();
     for def in &defs {
         let name = def.file_name().unwrap().to_string_lossy().into_owned();
-        let result = tokio::time::timeout(Duration::from_secs(60), run_def(def, port))
+        let result = tokio::time::timeout(Duration::from_secs(150), run_def(def, port))
             .await
             .unwrap_or_else(|_| Err("test timed out".into()));
         if let Err(e) = result {
@@ -481,27 +497,120 @@ async fn run_version(dir_name: &str, begin_string: &str, spec_file: &str) {
     }
 }
 
+/// The standard per-version suite: ResetOnLogon so each def starts fresh.
+fn classic(dir: &'static str, begin_string: &'static str, spec: &'static str) -> Suite {
+    let extra = match spec {
+        "FIX40.xml" => "ResetOnLogon=Y\nDataDictionary={spec}/FIX40.xml",
+        "FIX41.xml" => "ResetOnLogon=Y\nDataDictionary={spec}/FIX41.xml",
+        "FIX42.xml" => "ResetOnLogon=Y\nDataDictionary={spec}/FIX42.xml",
+        "FIX43.xml" => "ResetOnLogon=Y\nDataDictionary={spec}/FIX43.xml",
+        "FIX44.xml" => "ResetOnLogon=Y\nDataDictionary={spec}/FIX44.xml",
+        _ => unreachable!(),
+    };
+    Suite { dir, begin_string, app_ver: begin_string, extra_settings: extra }
+}
+
 #[tokio::test]
 async fn acceptance_fix40() {
-    run_version("fix40", "FIX.4.0", "FIX40.xml").await;
+    run_suite(classic("fix40", "FIX.4.0", "FIX40.xml")).await;
 }
 
 #[tokio::test]
 async fn acceptance_fix41() {
-    run_version("fix41", "FIX.4.1", "FIX41.xml").await;
+    run_suite(classic("fix41", "FIX.4.1", "FIX41.xml")).await;
 }
 
 #[tokio::test]
 async fn acceptance_fix42() {
-    run_version("fix42", "FIX.4.2", "FIX42.xml").await;
+    run_suite(classic("fix42", "FIX.4.2", "FIX42.xml")).await;
 }
 
 #[tokio::test]
 async fn acceptance_fix43() {
-    run_version("fix43", "FIX.4.3", "FIX43.xml").await;
+    run_suite(classic("fix43", "FIX.4.3", "FIX43.xml")).await;
 }
 
 #[tokio::test]
 async fn acceptance_fix44() {
-    run_version("fix44", "FIX.4.4", "FIX44.xml").await;
+    run_suite(classic("fix44", "FIX.4.4", "FIX44.xml")).await;
+}
+
+#[tokio::test]
+async fn acceptance_fix44_noreset() {
+    run_suite(Suite {
+        dir: "fix44noreset",
+        begin_string: "FIX.4.4",
+        app_ver: "FIX.4.4",
+        extra_settings: "ResetOnLogon=N\nDataDictionary={spec}/FIX44.xml",
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn acceptance_misc() {
+    run_suite(Suite {
+        dir: "misc",
+        begin_string: "FIX.4.2",
+        app_ver: "FIX.4.2",
+        extra_settings: "ResetOnLogon=Y\n\
+             SenderSubID=SENDERSUB\nSenderLocationID=SENDERLOC\n\
+             TargetSubID=TARGETSUB\nTargetLocationID=TARGETLOC\n\
+             EnableLastMsgSeqNumProcessed=Y\n\
+             MaxMessagesInResendRequest=2500\n\
+             SendLogoutBeforeDisconnectFromTimeout=Y\n\
+             DataDictionary={spec}/FIX42.xml",
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn acceptance_enhanced_resend() {
+    run_suite(Suite {
+        dir: "enhancedresend",
+        begin_string: "FIX.4.4",
+        app_ver: "FIX.4.4",
+        extra_settings: "ResetOnLogon=Y\n\
+             RequiresOrigSendingTime=N\n\
+             EnableLastMsgSeqNumProcessed=Y\n\
+             MaxMessagesInResendRequest=10\n\
+             DataDictionary={spec}/FIX44.xml",
+    })
+    .await;
+}
+
+fn fixt(dir: &'static str, app_ver: &'static str, extra: &'static str) -> Suite {
+    Suite { dir, begin_string: "FIXT.1.1", app_ver, extra_settings: extra }
+}
+
+#[tokio::test]
+async fn acceptance_fix50() {
+    run_suite(fixt(
+        "fix50",
+        "FIX.5.0",
+        "ResetOnLogon=Y\nDefaultApplVerID=FIX.5.0\n\
+         TransportDataDictionary={spec}/FIXT11.xml\nAppDataDictionary={spec}/FIX50.xml",
+    ))
+    .await;
+}
+
+#[tokio::test]
+async fn acceptance_fix50sp1() {
+    run_suite(fixt(
+        "fix50sp1",
+        "FIX.5.0SP1",
+        "ResetOnLogon=Y\nDefaultApplVerID=FIX.5.0SP1\n\
+         TransportDataDictionary={spec}/FIXT11.xml\nAppDataDictionary={spec}/FIX50SP1.xml",
+    ))
+    .await;
+}
+
+#[tokio::test]
+async fn acceptance_fix50sp2() {
+    run_suite(fixt(
+        "fix50sp2",
+        "FIX.5.0SP2",
+        "ResetOnLogon=Y\nDefaultApplVerID=FIX.5.0SP2\n\
+         TransportDataDictionary={spec}/FIXT11.xml\nAppDataDictionary={spec}/FIX50SP2.xml",
+    ))
+    .await;
 }
