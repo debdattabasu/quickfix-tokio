@@ -140,6 +140,10 @@ pub struct SessionConfig {
     pub send_logout_before_disconnect_from_timeout: bool,
     /// Require OrigSendingTime(122) on PossDup messages (default Y).
     pub requires_orig_sending_time: bool,
+    /// Negotiate sequence recovery via NextExpectedMsgSeqNum(789) on the
+    /// Logon handshake (C++ `SendNextExpectedMsgSeqNum`, go
+    /// `EnableNextExpectedMsgSeqNum`). Default off, like both references.
+    pub send_next_expected_msg_seq_num: bool,
     pub file_store_path: Option<String>,
     pub file_log_path: Option<String>,
     /// FIXT.1.1 sessions: DefaultApplVerID(1137) for our Logon.
@@ -295,6 +299,8 @@ impl SessionConfig {
                 false,
             )?,
             requires_orig_sending_time: get_bool(m, "RequiresOrigSendingTime", true)?,
+            send_next_expected_msg_seq_num: get_bool(m, "SendNextExpectedMsgSeqNum", false)?
+                || get_bool(m, "EnableNextExpectedMsgSeqNum", false)?,
             validation: ValidationSettings {
                 check_fields_out_of_order: get_bool(m, "ValidateFieldsOutOfOrder", true)?,
                 check_fields_have_values: get_bool(m, "ValidateFieldsHaveValues", true)?,

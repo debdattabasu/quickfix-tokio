@@ -178,6 +178,67 @@ async fn heartbeats_keep_session_alive() {
     server.stop().await;
 }
 
+#[tokio::test]
+async fn next_expected_seq_num_handshake_between_engines() {
+    // Two real engines with SendNextExpectedMsgSeqNum=Y must still log on and
+    // exchange messages: this exercises the initiator's fresh-logon 789 and
+    // the acceptor's reply 789, which the acceptor-driven acceptance defs
+    // don't cover.
+    let port = free_port();
+    let with_789 = |base: Settings| {
+        let mut s = base;
+        for sess in &mut s.sessions {
+            sess.insert("SendNextExpectedMsgSeqNum".into(), "Y".into());
+        }
+        s
+    };
+    let server_app = Arc::new(RecordingApp::default());
+    let server = Engine::start(
+        &with_789(acceptor_settings(port, 30)),
+        server_app.clone(),
+        Arc::new(MemoryStoreFactory),
+        Arc::new(TracingLogFactory),
+    )
+    .await
+    .unwrap();
+    let client = Engine::start(
+        &with_789(initiator_settings(port, 30)),
+        Arc::new(RecordingApp::default()),
+        Arc::new(MemoryStoreFactory),
+        Arc::new(TracingLogFactory),
+    )
+    .await
+    .unwrap();
+
+    let client_session = client.session("FIX.4.4", "CLIENT", "SERVER").unwrap();
+    let server_session = server.session("FIX.4.4", "SERVER", "CLIENT").unwrap();
+    wait_for("both logged on with 789 enabled", async || {
+        client_session.is_logged_on().await && server_session.is_logged_on().await
+    })
+    .await;
+
+    // Normal message flow still works.
+    let mut order = Message::with_type("D");
+    order.set(11, "789-ORDER");
+    order.set(55, "TSLA");
+    order.set(54, '1');
+    order.set(60, UtcTimestamp::now());
+    order.set(40, '1');
+    client_session.send(order).await.unwrap();
+
+    wait_for("server received the order", async || {
+        !server_app.app_messages.lock().unwrap().is_empty()
+    })
+    .await;
+    assert_eq!(
+        server_app.app_messages.lock().unwrap()[0].body.get_string(11).unwrap(),
+        "789-ORDER"
+    );
+
+    client.stop().await;
+    server.stop().await;
+}
+
 // ----- raw-socket counterparty for protocol-level tests -----
 
 struct RawClient {

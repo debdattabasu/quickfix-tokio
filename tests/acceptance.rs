@@ -333,7 +333,32 @@ fn connection_id(line: &[u8], keyword_len: usize) -> (u32, usize) {
     }
 }
 
-async fn run_def(path: &Path, port: u16) -> Result<(), String> {
+/// Handle `iSET_SESSION <bs>:<sender>-><target> NEXT{SENDER,TARGET}SEQNUM=n`.
+async fn set_session(line: &[u8], engine: &Engine) -> Result<(), String> {
+    let text = std::str::from_utf8(line).map_err(|e| e.to_string())?;
+    let mut parts = text.split_whitespace();
+    parts.next(); // "iSET_SESSION"
+    let sid = parts.next().ok_or("SET_SESSION missing session id")?;
+    let assign = parts.next().ok_or("SET_SESSION missing assignment")?;
+
+    // Parse "BeginString:Sender->Target".
+    let (bs, comps) = sid.split_once(':').ok_or("bad session id")?;
+    let (sender, target) = comps.split_once("->").ok_or("bad session id")?;
+    let handle = engine
+        .session(bs, sender, target)
+        .ok_or_else(|| format!("no session {sid}"))?;
+
+    let (key, val) = assign.split_once('=').ok_or("bad assignment")?;
+    let n: u64 = val.parse().map_err(|_| format!("bad seqnum {val}"))?;
+    match key {
+        "NEXTSENDERSEQNUM" => handle.set_next_sender_seq_num(n).await,
+        "NEXTTARGETSEQNUM" => handle.set_next_target_seq_num(n).await,
+        other => return Err(format!("unknown SET_SESSION key {other}")),
+    }
+    .map_err(|e| e.to_string())
+}
+
+async fn run_def(path: &Path, port: u16, engine: &Engine) -> Result<(), String> {
     let script = std::fs::read(path).map_err(|e| e.to_string())?;
     let mut connections: HashMap<u32, Connection> = HashMap::new();
 
@@ -349,6 +374,12 @@ async fn run_def(path: &Path, port: u16) -> Result<(), String> {
                 .parse()
                 .map_err(|_| with_line("bad sleep".into()))?;
             tokio::time::sleep(Duration::from_secs_f64(secs)).await;
+            continue;
+        }
+        // `iSET_SESSION <bs>:<sender>-><target> NEXT{SENDER,TARGET}SEQNUM=n`
+        // presets a session's sequence numbers (go's test directive).
+        if line.starts_with(b"iSET_SESSION") {
+            set_session(line, engine).await.map_err(with_line)?;
             continue;
         }
         match line[0] {
@@ -478,7 +509,7 @@ async fn run_suite(suite: Suite) {
     let mut failures = Vec::new();
     for def in &defs {
         let name = def.file_name().unwrap().to_string_lossy().into_owned();
-        let result = tokio::time::timeout(Duration::from_secs(150), run_def(def, port))
+        let result = tokio::time::timeout(Duration::from_secs(150), run_def(def, port, &engine))
             .await
             .unwrap_or_else(|_| Err("test timed out".into()));
         if let Err(e) = result {
@@ -712,6 +743,56 @@ async fn acceptance_client() {
         }
     }
     engine.stop().await;
+}
+
+// ----- NextExpectedMsgSeqNum(789) suite (ported from quickfix-go) -----
+//
+// Exercises the tag-789 logon handshake: in-sync (2a), peer expects unsent
+// messages -> disconnect (2b), peer behind -> implied gap-fill after logon
+// (2c), and the 141/789 interaction (reset def). Uses SET_SESSION to preset
+// sequence numbers. ResetOnLogon=N so those presets survive to logon.
+
+#[tokio::test]
+async fn acceptance_next_expected_fix44() {
+    run_suite(Suite {
+        dir: "nextexpectedseqnum/fix44",
+        begin_string: "FIX.4.4",
+        app_ver: "FIX.4.4",
+        extra_settings: "ResetOnLogon=N\nSendNextExpectedMsgSeqNum=Y\n\
+             DataDictionary={spec}/FIX44.xml",
+    })
+    .await;
+}
+
+fn next_expected_fixt(dir: &'static str, app_ver: &'static str, app_spec: &'static str) -> Suite {
+    Suite {
+        dir,
+        begin_string: "FIXT.1.1",
+        app_ver,
+        extra_settings: match app_spec {
+            "FIX50" => "ResetOnLogon=N\nSendNextExpectedMsgSeqNum=Y\nDefaultApplVerID=FIX.5.0\n\
+                 TransportDataDictionary={spec}/FIXT11.xml\nAppDataDictionary={spec}/FIX50.xml",
+            "FIX50SP1" => "ResetOnLogon=N\nSendNextExpectedMsgSeqNum=Y\nDefaultApplVerID=FIX.5.0SP1\n\
+                 TransportDataDictionary={spec}/FIXT11.xml\nAppDataDictionary={spec}/FIX50SP1.xml",
+            _ => "ResetOnLogon=N\nSendNextExpectedMsgSeqNum=Y\nDefaultApplVerID=FIX.5.0SP2\n\
+                 TransportDataDictionary={spec}/FIXT11.xml\nAppDataDictionary={spec}/FIX50SP2.xml",
+        },
+    }
+}
+
+#[tokio::test]
+async fn acceptance_next_expected_fix50() {
+    run_suite(next_expected_fixt("nextexpectedseqnum/fix50", "FIX.5.0", "FIX50")).await;
+}
+
+#[tokio::test]
+async fn acceptance_next_expected_fix50sp1() {
+    run_suite(next_expected_fixt("nextexpectedseqnum/fix50sp1", "FIX.5.0SP1", "FIX50SP1")).await;
+}
+
+#[tokio::test]
+async fn acceptance_next_expected_fix50sp2() {
+    run_suite(next_expected_fixt("nextexpectedseqnum/fix50sp2", "FIX.5.0SP2", "FIX50SP2")).await;
 }
 
 #[tokio::test]

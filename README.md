@@ -164,14 +164,16 @@ loop), `transport` (acceptor/initiator/socket tasks), `engine` (wiring),
 
 ## Acceptance suite
 
-The engine passes the **classic QuickFIX acceptance test suite** — ~490
-protocol-conformance scripts across thirteen fixtures: FIX 4.0 through 4.4,
+The engine passes the **classic QuickFIX acceptance test suite** — ~500
+protocol-conformance scripts across seventeen fixtures: FIX 4.0 through 4.4,
 FIXT.1.1 with FIX 5.0/5.0SP1/5.0SP2, the no-reset FIX 4.4 variant, the misc
 suite (LastMsgSeqNumProcessed(369), chunked ResendRequests, sub/location ID
 routing, logout-before-timeout-disconnect), the CME enhanced-resend suite,
-plus two ported from quickfix C++: `validate` (per-session
-ValidateFieldsHaveValues toggle) and `client` (initiator-driven — the
-harness listens and the engine dials in). These are the same `.def` scripts
+the NextExpectedMsgSeqNum(789) suite (in-sync / peer-ahead-disconnect /
+peer-behind-implied-resend / 141+789 reset), plus two ported from quickfix
+C++: `validate` (per-session ValidateFieldsHaveValues toggle) and `client`
+(initiator-driven — the harness listens and the engine dials in). These are
+the same `.def` scripts
 the reference engines certify with (vendored from QuickFIX/n and quickfix
 C++ into `acceptance/definitions/`). The runner
 ([tests/acceptance.rs](tests/acceptance.rs)) is a Rust port of QuickFIX/n's
@@ -212,13 +214,15 @@ right after a queue replay).
 - LastMsgSeqNumProcessed(369), chunked ResendRequests
   (`MaxMessagesInResendRequest`), `RequiresOrigSendingTime=N`,
   `SendLogoutBeforeDisconnectFromTimeout`, sub/location ID identities
+- `NextExpectedMsgSeqNum(789)` logon-handshake recovery
+  (`SendNextExpectedMsgSeqNum=Y`, default off, C++ semantics) — folds gap
+  recovery into logon; required by some venues (e.g. CME)
 - FIX 4.0–4.4 and FIXT.1.1, ephemeral + persistent sessions
 
 ## Not yet implemented
 
 - Session schedules (`StartTime`/`EndTime`, weekly windows) — sessions are
   non-stop; connect/disconnect is driven by the engine lifecycle
-- `NextExpectedMsgSeqNum(789)` logon sync
 - TLS, per-message fsync durability, SQL/Mongo stores
 - Decimal price/qty types (typed accessors use `f64`; use the raw
   `FieldMap` string accessors where exact decimals matter)

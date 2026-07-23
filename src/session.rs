@@ -35,6 +35,13 @@ pub(crate) enum Command {
     /// Detach and stop the session task.
     Stop(oneshot::Sender<()>),
     Status(oneshot::Sender<SessionStatus>),
+    /// Operationally set the next sender/target sequence numbers (each
+    /// `Some` is applied). Reply resolves once applied.
+    SetSeqNums {
+        sender: Option<u64>,
+        target: Option<u64>,
+        reply: oneshot::Sender<Result<()>>,
+    },
 }
 
 pub(crate) struct Connection {
@@ -90,6 +97,25 @@ impl SessionHandle {
 
     pub async fn is_logged_on(&self) -> bool {
         self.status().await.map(|s| s.logged_on).unwrap_or(false)
+    }
+
+    /// Set the next outbound sequence number (operational reset).
+    pub async fn set_next_sender_seq_num(&self, n: u64) -> Result<()> {
+        self.set_seq_nums(Some(n), None).await
+    }
+
+    /// Set the next expected inbound sequence number (operational reset).
+    pub async fn set_next_target_seq_num(&self, n: u64) -> Result<()> {
+        self.set_seq_nums(None, Some(n)).await
+    }
+
+    async fn set_seq_nums(&self, sender: Option<u64>, target: Option<u64>) -> Result<()> {
+        let (reply, rx) = oneshot::channel();
+        self.cmd_tx
+            .send(Command::SetSeqNums { sender, target, reply })
+            .await
+            .map_err(|_| Error::UnknownSession(self.id.to_string()))?;
+        rx.await.map_err(|_| Error::UnknownSession(self.id.to_string()))?
     }
 }
 
@@ -150,6 +176,8 @@ pub(crate) struct Session {
     /// from the stash — a too-low SequenceReset-GapFill right after a
     /// stash replay is obeyed anyway (QuickFIX/n issue #309).
     last_processed_was_queued: bool,
+    /// Negotiate recovery via NextExpectedMsgSeqNum(789) on logon.
+    send_next_expected: bool,
 }
 
 impl Session {
@@ -164,6 +192,7 @@ impl Session {
         let (cmd_tx, cmd_rx) = mpsc::channel(64);
         let handle = SessionHandle { id: cfg.session_id.clone(), cmd_tx };
         let heart_bt_int = cfg.heart_bt_int;
+        let send_next_expected = cfg.send_next_expected_msg_seq_num;
         let session = Session {
             cfg,
             store,
@@ -188,6 +217,7 @@ impl Session {
             last_received_seq: 0,
             stash: BTreeMap::new(),
             last_processed_was_queued: false,
+            send_next_expected,
         };
         tokio::spawn(session.run());
         handle
@@ -237,6 +267,16 @@ impl Session {
                                 next_sender_seq_num: self.store.next_sender_seq_num(),
                                 next_target_seq_num: self.store.next_target_seq_num(),
                             });
+                        }
+                        Some(Command::SetSeqNums { sender, target, reply }) => {
+                            let mut res = Ok(());
+                            if let Some(n) = sender {
+                                res = res.and(self.store.set_next_sender_seq_num(n).await);
+                            }
+                            if let Some(n) = target {
+                                res = res.and(self.store.set_next_target_seq_num(n).await);
+                            }
+                            let _ = reply.send(res);
                         }
                         Some(Command::Stop(reply)) => {
                             if self.is_logged_on() {
@@ -468,6 +508,12 @@ impl Session {
         if let Some(v) = &self.cfg.default_appl_ver_id {
             logon.set(tags::DEFAULT_APPL_VER_ID, appl_ver_id_enum(v));
         }
+        // A fresh initiating logon reports the next seqnum we expect to
+        // receive (C++ generateLogon uses getExpectedTargetNum(), no +1 —
+        // we haven't received the peer's logon yet).
+        if self.send_next_expected {
+            logon.set(tags::NEXT_EXPECTED_MSG_SEQ_NUM, self.store.next_target_seq_num());
+        }
         self.sent_logon = true;
         self.event("Initiated logon request");
         self.send_message(logon)
@@ -485,13 +531,24 @@ impl Session {
         let mut logon = Message::with_type(msg_type::LOGON);
         logon.set(tags::ENCRYPT_METHOD, 0);
         logon.set(tags::HEART_BT_INT, self.heart_bt_int.as_secs());
-        // The reply does not echo ResetSeqNumFlag(141) — matches QuickFIX/n
-        // (verified by the SessionReset acceptance test).
+        // The reply echoes ResetSeqNumFlag(141) only in 789 mode: C++/go
+        // echo it, QuickFIX/n does not (whose SessionReset acceptance test
+        // expects no 141). Gating on send_next_expected keeps the default
+        // QuickFIX/n-compatible while matching C++ when 789 is enabled.
         if self.received_reset {
+            if self.send_next_expected {
+                logon.set(tags::RESET_SEQ_NUM_FLAG, true);
+            }
             self.sent_reset = true;
         }
         if let Some(v) = &self.cfg.default_appl_ver_id {
             logon.set(tags::DEFAULT_APPL_VER_ID, appl_ver_id_enum(v));
+        }
+        // The reply reports next-target + 1: the incoming logon we're
+        // replying to has not incremented the target seqnum yet (C++
+        // generateLogon(reply)).
+        if self.send_next_expected {
+            logon.set(tags::NEXT_EXPECTED_MSG_SEQ_NUM, self.store.next_target_seq_num() + 1);
         }
         self.sent_logon = true;
         self.event("Responding to logon request");
@@ -965,6 +1022,26 @@ impl Session {
         }
         self.received_logon = true;
 
+        // NextExpectedMsgSeqNum(789): the peer tells us the next seqnum it
+        // expects from us. Read it before replying (C++ nextLogon).
+        let mut retransmit_from: Option<u64> = None;
+        if self.send_next_expected {
+            if let Ok(Some(peer_789)) = msg.body.get_opt::<u64>(tags::NEXT_EXPECTED_MSG_SEQ_NUM) {
+                let next_sender = self.store.next_sender_seq_num();
+                if peer_789 > next_sender {
+                    // The peer expects messages we never sent — unrecoverable.
+                    let reason = format!(
+                        "Tag 789 (NextExpectedMsgSeqNum) is higher than expected. Expected {next_sender}, Received {peer_789}"
+                    );
+                    let _ = self.initiate_logout(&reason).await;
+                    return Err(Disconnect(reason));
+                } else if peer_789 < next_sender {
+                    // The peer is behind; retransmit the gap after logon.
+                    retransmit_from = Some(peer_789);
+                }
+            }
+        }
+
         if !self.is_initiator() {
             let peer_hbi = msg.body.get_opt::<u64>(tags::HEART_BT_INT).ok().flatten();
             self.send_logon_reply(peer_hbi)
@@ -979,8 +1056,22 @@ impl Session {
         // Seqnum-too-high on the logon itself is handled after replying.
         let seq = msg.seq_num().map_err(|_| Disconnect("logon missing MsgSeqNum".into()))?;
         let expected = self.store.next_target_seq_num();
+        let reset = msg.body.get_raw(tags::RESET_SEQ_NUM_FLAG) == Some(b"Y");
         if seq > expected {
-            self.on_target_too_high(msg, seq, expected).await?;
+            if self.send_next_expected && !reset {
+                // In 789 mode we do not send a ResendRequest for the peer's
+                // gap: we already told the peer (via our reply's 789) what we
+                // expect, and rely on it to retransmit. Just stash and record
+                // the range (C++ nextLogon).
+                self.event(&format!(
+                    "Expecting retransmits FROM: {expected} TO: {}",
+                    seq - 1
+                ));
+                self.stash.insert(seq, Bytes::from(msg.to_bytes()));
+                self.resend_range = Some((expected, seq - 1, seq - 1));
+            } else {
+                self.on_target_too_high(msg, seq, expected).await?;
+            }
         } else {
             self.store
                 .incr_next_target_seq_num()
@@ -991,6 +1082,15 @@ impl Session {
         if self.is_logged_on() {
             self.event("Logon successful");
             self.app.on_logon(&self.cfg.session_id).await;
+        }
+
+        // Finally, replay the gap the peer is missing (its 789 was too low).
+        if let Some(begin) = retransmit_from {
+            let end = self.store.next_sender_seq_num() - 1;
+            self.event(&format!(
+                "Sending retransmits due to received NextExpectedMsgSeqNum too low. FROM: {begin} TO: {end}"
+            ));
+            self.answer_resend(begin, end).await;
         }
         Ok(())
     }
@@ -1026,14 +1126,7 @@ impl Session {
             end = next_sender - 1;
         }
         self.event(&format!("Received ResendRequest FROM: {begin} TO: {end}"));
-
-        if begin <= end {
-            if self.cfg.persist_messages {
-                self.retransmit(begin, end).await;
-            } else {
-                self.send_gap_fill(begin, end + 1).await;
-            }
-        }
+        self.answer_resend(begin, end).await;
 
         // The ResendRequest consumes its own seqnum only if it was in
         // sequence (it may itself arrive during a two-way gap).
@@ -1043,6 +1136,20 @@ impl Session {
             }
         }
         Ok(())
+    }
+
+    /// Answer a resend range `[begin, end]`: replay persisted messages, or
+    /// gap-fill the whole range when persistence is off. Shared by the
+    /// ResendRequest handler and the 789 retransmit-after-logon path.
+    async fn answer_resend(&mut self, begin: u64, end: u64) {
+        if begin > end {
+            return;
+        }
+        if self.cfg.persist_messages {
+            self.retransmit(begin, end).await;
+        } else {
+            self.send_gap_fill(begin, end + 1).await;
+        }
     }
 
     /// Replay stored messages `[begin, end]`: app messages re-sent with
