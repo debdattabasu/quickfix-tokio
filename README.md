@@ -164,13 +164,16 @@ loop), `transport` (acceptor/initiator/socket tasks), `engine` (wiring),
 
 ## Acceptance suite
 
-The engine passes the **classic QuickFIX acceptance test suite** — 490
-protocol-conformance scripts across eleven fixtures: FIX 4.0 through 4.4,
+The engine passes the **classic QuickFIX acceptance test suite** — ~490
+protocol-conformance scripts across thirteen fixtures: FIX 4.0 through 4.4,
 FIXT.1.1 with FIX 5.0/5.0SP1/5.0SP2, the no-reset FIX 4.4 variant, the misc
 suite (LastMsgSeqNumProcessed(369), chunked ResendRequests, sub/location ID
-routing, logout-before-timeout-disconnect), and the CME enhanced-resend
-suite. These are the same `.def` scripts the reference engines certify with
-(vendored from QuickFIX/n into `acceptance/definitions/`). The runner
+routing, logout-before-timeout-disconnect), the CME enhanced-resend suite,
+plus two ported from quickfix C++: `validate` (per-session
+ValidateFieldsHaveValues toggle) and `client` (initiator-driven — the
+harness listens and the engine dials in). These are the same `.def` scripts
+the reference engines certify with (vendored from QuickFIX/n and quickfix
+C++ into `acceptance/definitions/`). The runner
 ([tests/acceptance.rs](tests/acceptance.rs)) is a Rust port of QuickFIX/n's
 Runner/ReflectorClient: it drives a raw TCP client (or several) against a
 live engine, with `<TIME±n>` decoration, automatic BodyLength/CheckSum

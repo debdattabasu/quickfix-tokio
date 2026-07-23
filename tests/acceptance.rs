@@ -25,7 +25,7 @@ use quickfix_tokio::{
     Settings,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
 const SOH: u8 = 0x01;
@@ -411,8 +411,10 @@ struct Suite {
     begin_string: &'static str,
     /// Application-level FIX version for the AT app's handler table.
     app_ver: &'static str,
-    /// Extra `[SESSION]` config lines (dictionaries, feature toggles, ...).
-    /// `{spec}` expands to the acceptance/spec directory.
+    /// Extra config lines appended to the `[SESSION]` block (dictionaries,
+    /// feature toggles, ...). `{spec}` expands to the acceptance/spec
+    /// directory and `{port}` to the acceptor port, so a fixture may append
+    /// an entire additional `[SESSION]` block.
     extra_settings: &'static str,
 }
 
@@ -436,7 +438,7 @@ async fn run_suite(suite: Suite) {
          LogonTimeout=2\n\
          LogoutTimeout=1\n\
          {}\n",
-        suite.extra_settings.replace("{spec}", &spec_dir)
+        suite.extra_settings.replace("{spec}", &spec_dir).replace("{port}", &port.to_string())
     ))
     .unwrap();
 
@@ -578,8 +580,138 @@ async fn acceptance_enhanced_resend() {
     .await;
 }
 
+/// The validate suite (ported from quickfix C++): the first connection uses
+/// the normal session (validation on); the second connects as
+/// NO_CHECK_FIELDS_HAVE_VALUES, a session configured with
+/// ValidateFieldsHaveValues=N, so an empty field value is accepted rather
+/// than rejected. Two `[SESSION]` blocks share the acceptor port.
+#[tokio::test]
+async fn acceptance_validate() {
+    run_suite(Suite {
+        dir: "validate",
+        begin_string: "FIX.4.4",
+        app_ver: "FIX.4.4",
+        extra_settings: "ResetOnLogon=Y\nDataDictionary={spec}/FIX44.xml\n\
+             \n\
+             [SESSION]\n\
+             ConnectionType=acceptor\n\
+             BeginString=FIX.4.4\n\
+             SenderCompID=ISLD\n\
+             TargetCompID=NO_CHECK_FIELDS_HAVE_VALUES\n\
+             SocketAcceptPort={port}\n\
+             HeartBtInt=30\n\
+             ResetOnLogon=Y\n\
+             ValidateFieldsHaveValues=N\n\
+             DataDictionary={spec}/FIX44.xml",
+    })
+    .await;
+}
+
 fn fixt(dir: &'static str, app_ver: &'static str, extra: &'static str) -> Suite {
     Suite { dir, begin_string: "FIXT.1.1", app_ver, extra_settings: extra }
+}
+
+// ----- client (initiator-driven) suite -----
+//
+// Ported from quickfix C++'s `definitions/client`. Here the topology is
+// reversed: the harness listens and the engine-under-test is an *initiator*
+// that dials in. Directives invert accordingly:
+//   `eCONNECT`     accept the engine's outbound connection
+//   `E<msg>`       expect the next message *from* the engine
+//   `R<msg>`       respond by sending a message *to* the engine
+//   `eDISCONNECT`  expect the engine to close the socket
+
+async fn run_client_def(path: &Path, listener: &TcpListener) -> Result<(), String> {
+    let script = std::fs::read(path).map_err(|e| e.to_string())?;
+    let mut conn: Option<Connection> = None;
+
+    for (line_no, line) in script.split(|&b| b == b'\n').enumerate() {
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        let with_line = |e: String| format!("line {}: {e}", line_no + 1);
+        if line.is_empty() || line[0] == b'#' {
+            continue;
+        }
+        match line[0] {
+            b'e' if line.ends_with(b"CONNECT") && !line.ends_with(b"DISCONNECT") => {
+                let (stream, _) = tokio::time::timeout(Duration::from_secs(10), listener.accept())
+                    .await
+                    .map_err(|_| with_line("timed out waiting for engine to connect".into()))?
+                    .map_err(|e| with_line(format!("accept failed: {e}")))?;
+                stream.set_nodelay(true).ok();
+                conn = Some(Connection { stream, buf: BytesMut::new() });
+            }
+            b'e' if line.ends_with(b"DISCONNECT") => {
+                let c = conn.as_mut().ok_or_else(|| with_line("not connected".into()))?;
+                c.expect_disconnect().await.map_err(with_line)?;
+                conn = None;
+            }
+            b'E' => {
+                let expected = decorate(line[1..].to_vec());
+                let c = conn.as_mut().ok_or_else(|| with_line("not connected".into()))?;
+                let actual = c.read_message().await.map_err(&with_line)?;
+                match_message(&expected, &actual).map_err(with_line)?;
+            }
+            b'R' => {
+                let msg = decorate(line[1..].to_vec());
+                let c = conn.as_mut().ok_or_else(|| with_line("not connected".into()))?;
+                c.stream.write_all(&msg).await.map_err(|e| with_line(format!("send failed: {e}")))?;
+            }
+            _ => {
+                return Err(with_line(format!(
+                    "unrecognized directive: {}",
+                    String::from_utf8_lossy(line)
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn acceptance_client() {
+    struct NoApp;
+    #[async_trait::async_trait]
+    impl Application for NoApp {}
+
+    // Harness listens; the engine dials in.
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    // TimestampPrecision=0 (seconds) matches the C++ def's BodyLengths, and a
+    // long ReconnectInterval keeps the engine from re-dialing mid-test.
+    let engine = Engine::start(
+        &Settings::parse(&format!(
+            "[SESSION]\nConnectionType=initiator\nBeginString=FIX.4.2\n\
+             SenderCompID=TW\nTargetCompID=ISLD\nSocketConnectHost=127.0.0.1\n\
+             SocketConnectPort={port}\nHeartBtInt=30\nReconnectInterval=999\n\
+             TimestampPrecision=0\nUseDataDictionary=N\n"
+        ))
+        .unwrap(),
+        Arc::new(NoApp),
+        Arc::new(MemoryStoreFactory),
+        Arc::new(NullLogFactory),
+    )
+    .await
+    .unwrap();
+
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("acceptance/definitions/client");
+    let mut defs: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("cannot read {dir:?}: {e}"))
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "def"))
+        .collect();
+    defs.sort();
+    assert!(!defs.is_empty(), "no .def files in {dir:?}");
+
+    for def in &defs {
+        let name = def.file_name().unwrap().to_string_lossy().into_owned();
+        if let Err(e) = run_client_def(def, &listener).await {
+            engine.stop().await;
+            panic!("client/{name}: {e}");
+        }
+    }
+    engine.stop().await;
 }
 
 #[tokio::test]
