@@ -120,7 +120,7 @@ async fn main() -> quickfix_tokio::Result<()> {
              HeartBtInt=30\nDataDictionary={spec}\n"
         ))?,
         Arc::new(Publisher { tx: snap_tx }),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(NullLogFactory),
     )
     .await?;
@@ -142,7 +142,7 @@ async fn main() -> quickfix_tokio::Result<()> {
              DataDictionary={spec}\n"
         ))?,
         Arc::new(Subscriber { done: done_tx }),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(NullLogFactory),
     )
     .await?;

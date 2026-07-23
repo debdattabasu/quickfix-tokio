@@ -90,7 +90,7 @@ async fn main() -> quickfix_tokio::Result<()> {
              HeartBtInt=30\nDataDictionary={spec}\n"
         ))?,
         Arc::new(Executor { fills: fills_tx }),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(NullLogFactory),
     )
     .await?;
@@ -112,7 +112,7 @@ async fn main() -> quickfix_tokio::Result<()> {
              DataDictionary={spec}\n"
         ))?,
         Arc::new(Client { outstanding: outstanding.clone(), fill_tx }),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(NullLogFactory),
     )
     .await?;

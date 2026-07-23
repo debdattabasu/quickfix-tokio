@@ -482,7 +482,7 @@ async fn run_suite(suite: Suite) {
     let engine = Engine::start(
         &settings,
         app,
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(NullLogFactory),
     )
     .await
@@ -719,7 +719,7 @@ async fn acceptance_client() {
         ))
         .unwrap(),
         Arc::new(NoApp),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(NullLogFactory),
     )
     .await

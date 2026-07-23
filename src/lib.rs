@@ -18,7 +18,7 @@
 //! let engine = Engine::start(
 //!     &settings,
 //!     Arc::new(MyApp),
-//!     Arc::new(MemoryStoreFactory),
+//!     Arc::new(MemoryStoreFactory::new()),
 //!     Arc::new(TracingLogFactory),
 //! ).await?;
 //! # Ok(())
@@ -51,7 +51,7 @@ pub use datadictionary::{DataDictionary, ValidationSettings};
 pub use engine::Engine;
 pub use error::{Error, RejectError, Result, SessionRejectReason};
 pub use field_map::{FieldMap, GroupTemplate};
-pub use log::{FileLogFactory, Log, LogFactory, NullLogFactory, TracingLogFactory};
+pub use log::{FileLogFactory, Log, LogFactory, NullLogFactory, Rotation, TracingLogFactory};
 pub use message::{Message, Tag};
 pub use session::{SessionHandle, SessionStatus};
 pub use session_id::SessionId;

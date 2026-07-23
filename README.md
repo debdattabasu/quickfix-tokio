@@ -32,8 +32,8 @@ async fn main() -> quickfix_tokio::Result<()> {
     let engine = Engine::start(
         &settings,
         Arc::new(MyApp),
-        Arc::new(MemoryStoreFactory),      // or FileStoreFactory::new("store")
-        Arc::new(TracingLogFactory),       // or FileLogFactory / NullLogFactory
+        Arc::new(MemoryStoreFactory::new()), // or FileStoreFactory::new("store")
+        Arc::new(TracingLogFactory),         // or FileLogFactory / NullLogFactory
     ).await?;
 
     let session = engine.session("FIX.4.4", "CLIENT", "EXECUTOR").unwrap();
@@ -221,8 +221,13 @@ right after a queue replay).
 - Session-level Reject and BusinessMessageReject generation
 - Data dictionary validation (required fields, field formats, enums, unknown
   tags, group counts, out-of-order detection) from stock QuickFIX XML specs
-- Memory and file-backed stores (QuickFIX C++-style file layout), file and
-  tracing logs, classic INI settings
+- Pluggable message stores (the `MessageStoreFactory` trait — DB backends
+  drop in the same way): a bounded-capacity memory store
+  (`MemoryStoreFactory::with_capacity`) and a file store (QuickFIX C++-style
+  layout) with opt-in `fsync` durability (`FileStoreFactory::with_sync`,
+  offloaded to a blocking thread); tracing/null logs and a file log with
+  size-based rotation + backup retention (`FileLogFactory::with_rotation`);
+  classic INI settings
 - FIXT.1.1 sessions: Transport/AppDataDictionary split (admin messages
   validate against the transport dictionary alone), DefaultApplVerID(1137)
   enum mapping
@@ -246,7 +251,8 @@ right after a queue replay).
 
 ## Not yet implemented
 
-- Per-message fsync durability, SQL/Mongo stores
+- SQL / Mongo message stores (the `MessageStoreFactory` trait is ready for
+  them; they'd be added as new factory impls for HA/failover, not durability)
 
 ## Tests
 

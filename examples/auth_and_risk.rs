@@ -146,7 +146,7 @@ async fn main() -> quickfix_tokio::Result<()> {
              HeartBtInt=30\nDataDictionary={spec}\n"
         ))?,
         Arc::new(RiskExecutor { fills_out: fills_tx }),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(NullLogFactory),
     )
     .await?;
@@ -167,7 +167,7 @@ async fn main() -> quickfix_tokio::Result<()> {
              DataDictionary={spec}\n"
         ))?,
         Arc::new(AuthClient { events: ev_tx }),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(NullLogFactory),
     )
     .await?;

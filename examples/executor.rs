@@ -90,7 +90,7 @@ async fn main() -> quickfix_tokio::Result<()> {
     let engine = Engine::start(
         &settings,
         Arc::new(Executor { orders_tx }),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(TracingLogFactory),
     )
     .await?;

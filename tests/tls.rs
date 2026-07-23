@@ -110,7 +110,7 @@ async fn tls_logon_and_exchange_skip_verify() {
     let server = Engine::start(
         &acceptor(port, &cert, &key),
         server_app.clone(),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(NullLogFactory),
     )
     .await
@@ -120,7 +120,7 @@ async fn tls_logon_and_exchange_skip_verify() {
     let client = Engine::start(
         &initiator(port, "SocketInsecureSkipVerify=Y"),
         Arc::new(RecordingApp::default()),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(NullLogFactory),
     )
     .await
@@ -166,7 +166,7 @@ async fn tls_logon_ca_pinned() {
     let server = Engine::start(
         &acceptor(port, &cert, &key),
         Arc::new(RecordingApp::default()),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(NullLogFactory),
     )
     .await
@@ -177,7 +177,7 @@ async fn tls_logon_ca_pinned() {
             &format!("SocketCAFile={}\nSocketServerName=localhost", ca_file.display()),
         ),
         Arc::new(RecordingApp::default()),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(NullLogFactory),
     )
     .await
@@ -202,7 +202,7 @@ async fn tls_untrusted_cert_never_logs_on() {
     let server = Engine::start(
         &acceptor(port, &cert, &key),
         Arc::new(RecordingApp::default()),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(NullLogFactory),
     )
     .await
@@ -212,7 +212,7 @@ async fn tls_untrusted_cert_never_logs_on() {
     let client = Engine::start(
         &initiator(port, "SocketServerName=localhost"),
         Arc::new(RecordingApp::default()),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(NullLogFactory),
     )
     .await

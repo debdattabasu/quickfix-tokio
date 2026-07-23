@@ -53,7 +53,7 @@ async fn scheduled_logout_when_window_closes() {
         ))
         .unwrap(),
         Arc::new(App),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(NullLogFactory),
     )
     .await
@@ -66,7 +66,7 @@ async fn scheduled_logout_when_window_closes() {
         ))
         .unwrap(),
         Arc::new(App),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(NullLogFactory),
     )
     .await
@@ -106,7 +106,7 @@ async fn no_logon_outside_session_time() {
         ))
         .unwrap(),
         Arc::new(App),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(NullLogFactory),
     )
     .await
@@ -119,7 +119,7 @@ async fn no_logon_outside_session_time() {
         ))
         .unwrap(),
         Arc::new(App),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(NullLogFactory),
     )
     .await

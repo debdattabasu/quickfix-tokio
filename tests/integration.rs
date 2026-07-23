@@ -81,7 +81,7 @@ async fn logon_exchange_and_logout() {
     let server = Engine::start(
         &acceptor_settings(port, 30),
         server_app.clone(),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(TracingLogFactory),
     )
     .await
@@ -89,7 +89,7 @@ async fn logon_exchange_and_logout() {
     let client = Engine::start(
         &initiator_settings(port, 30),
         client_app.clone(),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(TracingLogFactory),
     )
     .await
@@ -148,7 +148,7 @@ async fn heartbeats_keep_session_alive() {
     let server = Engine::start(
         &acceptor_settings(port, 1),
         Arc::new(RecordingApp::default()),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(TracingLogFactory),
     )
     .await
@@ -156,7 +156,7 @@ async fn heartbeats_keep_session_alive() {
     let client = Engine::start(
         &initiator_settings(port, 1),
         Arc::new(RecordingApp::default()),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(TracingLogFactory),
     )
     .await
@@ -196,7 +196,7 @@ async fn next_expected_seq_num_handshake_between_engines() {
     let server = Engine::start(
         &with_789(acceptor_settings(port, 30)),
         server_app.clone(),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(TracingLogFactory),
     )
     .await
@@ -204,7 +204,7 @@ async fn next_expected_seq_num_handshake_between_engines() {
     let client = Engine::start(
         &with_789(initiator_settings(port, 30)),
         Arc::new(RecordingApp::default()),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(TracingLogFactory),
     )
     .await
@@ -311,7 +311,7 @@ async fn seqnum_gap_triggers_resend_request_and_gap_fill_recovers() {
     let server = Engine::start(
         &acceptor_settings(port, 30),
         server_app.clone(),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(TracingLogFactory),
     )
     .await
@@ -364,7 +364,7 @@ async fn dictionary_validation_rejects_bad_message() {
     let server = Engine::start(
         &settings,
         server_app.clone(),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(TracingLogFactory),
     )
     .await
@@ -403,7 +403,7 @@ async fn seqnum_too_low_causes_logout() {
     let server = Engine::start(
         &acceptor_settings(port, 30),
         Arc::new(RecordingApp::default()),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(TracingLogFactory),
     )
     .await
@@ -428,7 +428,7 @@ async fn test_request_answered_with_matching_heartbeat() {
     let server = Engine::start(
         &acceptor_settings(port, 30),
         Arc::new(RecordingApp::default()),
-        Arc::new(MemoryStoreFactory),
+        Arc::new(MemoryStoreFactory::new()),
         Arc::new(TracingLogFactory),
     )
     .await
