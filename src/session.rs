@@ -254,10 +254,20 @@ impl Session {
 
     async fn run(mut self) {
         self.app.on_create(&self.cfg.session_id).await;
-        let mut tick = tokio::time::interval(Duration::from_millis(100));
-        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        // Two timers, like quickfix-go: heartbeats/timeouts fire at their
+        // exact deadline (recomputed each iteration from last-sent/received),
+        // while a coarse 1 s tick drives only the session schedule.
+        let mut schedule_tick = tokio::time::interval(Duration::from_secs(1));
+        schedule_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
         loop {
+            let proto_deadline = self.next_protocol_deadline();
+            let proto_timer = async {
+                match proto_deadline {
+                    Some(at) => tokio::time::sleep_until(at).await,
+                    None => std::future::pending().await,
+                }
+            };
             tokio::select! {
                 cmd = self.cmd_rx.recv() => {
                     match cmd {
@@ -322,7 +332,8 @@ impl Session {
                         None => self.disconnect("connection closed by peer").await,
                     }
                 }
-                _ = tick.tick() => self.on_timer().await,
+                _ = schedule_tick.tick() => self.on_schedule_tick().await,
+                _ = proto_timer => self.on_protocol_deadline().await,
             }
         }
     }
@@ -386,61 +397,44 @@ impl Session {
         }
     }
 
-    // ----- timers (predicates from QuickFIX C++ SessionState) -----
+    // ----- timers -----
+    //
+    // Following quickfix-go: heartbeats and timeouts are event-driven — they
+    // fire at their exact deadline, computed from the last send/receive, so
+    // they are not limited by the (coarse) schedule tick's resolution. The
+    // schedule runs separately on a 1 s tick.
 
-    async fn on_timer(&mut self) {
-        // Schedule handling runs even while disconnected (so re-entering the
-        // window can reset sequence numbers before the next connection).
-        if !self.schedule.is_non_stop() {
-            let utc_now = chrono::Utc::now();
-            if !self.schedule.is_in_range(utc_now) {
-                // Outside session time: don't operate. Log out and drop any
-                // connection; the reset happens when we re-enter the window.
-                if self.is_connected() {
-                    if self.is_logged_on() && !self.sent_logout {
-                        let _ = self.initiate_logout("").await;
-                    }
-                    self.disconnect("Outside session time").await;
-                }
-                return;
-            }
-            // In session time. If this instant belongs to a *different*
-            // occurrence than the store's creation time, a new session has
-            // begun — reset sequence numbers (and restamp creation time).
-            if !self.schedule.is_in_same_range(utc_now, self.store.creation_time()) {
-                self.event("New session instance; resetting sequence numbers");
-                if self.is_connected() {
-                    if self.is_logged_on() && !self.sent_logout {
-                        let _ = self.initiate_logout("").await;
-                    }
-                    self.disconnect("Session time boundary crossed").await;
-                }
-                let _ = self.store.reset().await;
-                return;
-            }
-            // Still in session time but the logon window closed: log out.
-            if self.is_connected()
-                && self.is_logged_on()
-                && !self.sent_logout
-                && !self.logon_schedule.is_in_range(utc_now)
-            {
-                self.event("Logon time expired, initiating logout");
-                let _ = self.initiate_logout("").await;
-            }
-            // Initiator: send a deferred logon once the window opens.
-            if self.pending_logon
-                && self.is_connected()
-                && !self.sent_logon
-                && self.logon_schedule.is_in_range(utc_now)
-            {
-                self.pending_logon = false;
-                if let Err(Disconnect(reason)) = self.send_logon().await {
-                    self.disconnect(&reason).await;
-                    return;
-                }
-            }
+    /// The earliest heartbeat/test-request/timeout deadline, or `None` when
+    /// nothing is pending (disconnected, or logged on with HeartBtInt=0). The
+    /// deadline is derived from `last_sent`/`last_received`, so an inbound or
+    /// outbound message on the next loop iteration effectively "resets" the
+    /// timer by recomputing a later deadline.
+    fn next_protocol_deadline(&self) -> Option<Instant> {
+        if !self.is_connected() {
+            return None;
         }
+        if self.sent_logout {
+            return Some(self.last_sent + self.cfg.logout_timeout);
+        }
+        if !self.received_logon {
+            return Some(self.last_received + self.cfg.logon_timeout);
+        }
+        let hbi = self.heart_bt_int;
+        if hbi.is_zero() {
+            return None;
+        }
+        // Disconnect on peer silence, escalating test requests, and our own
+        // heartbeat when idle. Computed identically to on_protocol_deadline.
+        let mut deadline = (self.last_received + mul(hbi, 2.4))
+            .min(self.last_received + mul(hbi, 1.2 * (self.test_request_counter + 1) as f64));
+        if self.test_request_counter == 0 {
+            deadline = deadline.min(self.last_sent + hbi);
+        }
+        Some(deadline)
+    }
 
+    /// Act on whichever heartbeat/timeout deadline has come due.
+    async fn on_protocol_deadline(&mut self) {
         if !self.is_connected() {
             return;
         }
@@ -450,8 +444,10 @@ impl Session {
 
         // A pending logout times out regardless of logon state (we may have
         // sent Logout in response to a rejected logon attempt).
-        if self.sent_logout && since_sent >= self.cfg.logout_timeout {
-            self.disconnect("Timed out waiting for logout response").await;
+        if self.sent_logout {
+            if since_sent >= self.cfg.logout_timeout {
+                self.disconnect("Timed out waiting for logout response").await;
+            }
             return;
         }
         if !self.received_logon {
@@ -466,9 +462,6 @@ impl Session {
         if hbi.is_zero() {
             return;
         }
-        if since_sent < hbi && since_recv < hbi {
-            return;
-        }
         if since_recv >= mul(hbi, 2.4) {
             if self.cfg.send_logout_before_disconnect_from_timeout {
                 let _ = self.initiate_logout("").await;
@@ -481,6 +474,61 @@ impl Session {
             let _ = self.send_message(tr).await;
         } else if since_sent >= hbi && self.test_request_counter == 0 {
             let _ = self.send_message(Message::with_type(msg_type::HEARTBEAT)).await;
+        }
+    }
+
+    /// Session-schedule housekeeping on the 1 s tick. Runs even while
+    /// disconnected so re-entering the window can reset sequence numbers
+    /// before the next connection. A non-stop session does nothing here.
+    async fn on_schedule_tick(&mut self) {
+        if self.schedule.is_non_stop() {
+            return;
+        }
+        let utc_now = chrono::Utc::now();
+        if !self.schedule.is_in_range(utc_now) {
+            // Outside session time: don't operate. Log out and drop any
+            // connection; the reset happens when we re-enter the window.
+            if self.is_connected() {
+                if self.is_logged_on() && !self.sent_logout {
+                    let _ = self.initiate_logout("").await;
+                }
+                self.disconnect("Outside session time").await;
+            }
+            return;
+        }
+        // In session time. If this instant belongs to a *different* occurrence
+        // than the store's creation time, a new session has begun — reset
+        // sequence numbers (and restamp creation time).
+        if !self.schedule.is_in_same_range(utc_now, self.store.creation_time()) {
+            self.event("New session instance; resetting sequence numbers");
+            if self.is_connected() {
+                if self.is_logged_on() && !self.sent_logout {
+                    let _ = self.initiate_logout("").await;
+                }
+                self.disconnect("Session time boundary crossed").await;
+            }
+            let _ = self.store.reset().await;
+            return;
+        }
+        // Still in session time but the logon window closed: log out.
+        if self.is_connected()
+            && self.is_logged_on()
+            && !self.sent_logout
+            && !self.logon_schedule.is_in_range(utc_now)
+        {
+            self.event("Logon time expired, initiating logout");
+            let _ = self.initiate_logout("").await;
+        }
+        // Initiator: send a deferred logon once the window opens.
+        if self.pending_logon
+            && self.is_connected()
+            && !self.sent_logon
+            && self.logon_schedule.is_in_range(utc_now)
+        {
+            self.pending_logon = false;
+            if let Err(Disconnect(reason)) = self.send_logon().await {
+                self.disconnect(&reason).await;
+            }
         }
     }
 
