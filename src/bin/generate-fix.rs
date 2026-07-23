@@ -55,12 +55,14 @@ fn value_type(ft: FieldType) -> &'static str {
         | FieldType::SeqNum
         | FieldType::NumInGroup
         | FieldType::DayOfMonth => "i64",
+        // FIX float-family fields use the crate's Amount alias (exact
+        // rust_decimal::Decimal by default, or f64 without the feature).
         FieldType::Float
         | FieldType::Qty
         | FieldType::Price
         | FieldType::PriceOffset
         | FieldType::Amt
-        | FieldType::Percentage => "f64",
+        | FieldType::Percentage => "crate::Amount",
         FieldType::Char => "char",
         FieldType::Boolean => "bool",
         FieldType::UtcTimestamp => "crate::UtcTimestamp",

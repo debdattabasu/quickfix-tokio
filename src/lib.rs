@@ -60,3 +60,16 @@ pub use store::{
     FileStoreFactory, MemoryStoreFactory, MessageStore, MessageStoreFactory,
 };
 pub use value::{FixDate, TimestampPrecision, UtcTimestamp};
+
+/// The numeric type for FIX float-family fields (Price, Qty, Amt, Float,
+/// Percentage). Exact fixed-point [`rust_decimal::Decimal`] with the
+/// `decimal` feature (default), or `f64` without it. Generated typed
+/// accessors use this alias, so the whole typed API switches with the
+/// feature.
+#[cfg(feature = "decimal")]
+pub type Amount = rust_decimal::Decimal;
+#[cfg(not(feature = "decimal"))]
+pub type Amount = f64;
+
+#[cfg(feature = "decimal")]
+pub use rust_decimal::{Decimal, dec};

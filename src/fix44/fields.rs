@@ -40,7 +40,7 @@ impl AdvTransType {
 
 /// AvgPx (6).
 pub struct AvgPx;
-impl Field for AvgPx { const TAG: Tag = 6; type Value = f64; }
+impl Field for AvgPx { const TAG: Tag = 6; type Value = crate::Amount; }
 
 /// BeginSeqNo (7).
 pub struct BeginSeqNo;
@@ -64,7 +64,7 @@ impl Field for ClOrdID { const TAG: Tag = 11; type Value = String; }
 
 /// Commission (12).
 pub struct Commission;
-impl Field for Commission { const TAG: Tag = 12; type Value = f64; }
+impl Field for Commission { const TAG: Tag = 12; type Value = crate::Amount; }
 
 /// CommType (13).
 pub struct CommType;
@@ -80,7 +80,7 @@ impl CommType {
 
 /// CumQty (14).
 pub struct CumQty;
-impl Field for CumQty { const TAG: Tag = 14; type Value = f64; }
+impl Field for CumQty { const TAG: Tag = 14; type Value = crate::Amount; }
 
 /// Currency (15).
 pub struct Currency;
@@ -238,11 +238,11 @@ impl Field for LastMkt { const TAG: Tag = 30; type Value = String; }
 
 /// LastPx (31).
 pub struct LastPx;
-impl Field for LastPx { const TAG: Tag = 31; type Value = f64; }
+impl Field for LastPx { const TAG: Tag = 31; type Value = crate::Amount; }
 
 /// LastQty (32).
 pub struct LastQty;
-impl Field for LastQty { const TAG: Tag = 32; type Value = f64; }
+impl Field for LastQty { const TAG: Tag = 32; type Value = crate::Amount; }
 
 /// NoLinesOfText (33).
 pub struct NoLinesOfText;
@@ -361,7 +361,7 @@ impl Field for OrderID { const TAG: Tag = 37; type Value = String; }
 
 /// OrderQty (38).
 pub struct OrderQty;
-impl Field for OrderQty { const TAG: Tag = 38; type Value = f64; }
+impl Field for OrderQty { const TAG: Tag = 38; type Value = crate::Amount; }
 
 /// OrdStatus (39).
 pub struct OrdStatus;
@@ -426,7 +426,7 @@ impl Field for PossDupFlag { const TAG: Tag = 43; type Value = bool; }
 
 /// Price (44).
 pub struct Price;
-impl Field for Price { const TAG: Tag = 44; type Value = f64; }
+impl Field for Price { const TAG: Tag = 44; type Value = crate::Amount; }
 
 /// RefSeqNum (45).
 pub struct RefSeqNum;
@@ -487,7 +487,7 @@ impl Field for SendingTime { const TAG: Tag = 52; type Value = crate::UtcTimesta
 
 /// Quantity (53).
 pub struct Quantity;
-impl Field for Quantity { const TAG: Tag = 53; type Value = f64; }
+impl Field for Quantity { const TAG: Tag = 53; type Value = crate::Amount; }
 
 /// Side (54).
 pub struct Side;
@@ -658,7 +658,7 @@ impl Field for AllocAccount { const TAG: Tag = 79; type Value = String; }
 
 /// AllocQty (80).
 pub struct AllocQty;
-impl Field for AllocQty { const TAG: Tag = 80; type Value = f64; }
+impl Field for AllocQty { const TAG: Tag = 80; type Value = crate::Amount; }
 
 /// ProcessCode (81).
 pub struct ProcessCode;
@@ -683,7 +683,7 @@ impl Field for RptSeq { const TAG: Tag = 83; type Value = i64; }
 
 /// CxlQty (84).
 pub struct CxlQty;
-impl Field for CxlQty { const TAG: Tag = 84; type Value = f64; }
+impl Field for CxlQty { const TAG: Tag = 84; type Value = crate::Amount; }
 
 /// NoDlvyInst (85).
 pub struct NoDlvyInst;
@@ -781,7 +781,7 @@ impl EncryptMethod {
 
 /// StopPx (99).
 pub struct StopPx;
-impl Field for StopPx { const TAG: Tag = 99; type Value = f64; }
+impl Field for StopPx { const TAG: Tag = 99; type Value = crate::Amount; }
 
 /// ExDestination (100).
 pub struct ExDestination;
@@ -870,11 +870,11 @@ impl Field for ClientID { const TAG: Tag = 109; type Value = String; }
 
 /// MinQty (110).
 pub struct MinQty;
-impl Field for MinQty { const TAG: Tag = 110; type Value = f64; }
+impl Field for MinQty { const TAG: Tag = 110; type Value = crate::Amount; }
 
 /// MaxFloor (111).
 pub struct MaxFloor;
-impl Field for MaxFloor { const TAG: Tag = 111; type Value = f64; }
+impl Field for MaxFloor { const TAG: Tag = 111; type Value = crate::Amount; }
 
 /// TestReqID (112).
 pub struct TestReqID;
@@ -902,11 +902,11 @@ impl Field for QuoteID { const TAG: Tag = 117; type Value = String; }
 
 /// NetMoney (118).
 pub struct NetMoney;
-impl Field for NetMoney { const TAG: Tag = 118; type Value = f64; }
+impl Field for NetMoney { const TAG: Tag = 118; type Value = crate::Amount; }
 
 /// SettlCurrAmt (119).
 pub struct SettlCurrAmt;
-impl Field for SettlCurrAmt { const TAG: Tag = 119; type Value = f64; }
+impl Field for SettlCurrAmt { const TAG: Tag = 119; type Value = crate::Amount; }
 
 /// SettlCurrency (120).
 pub struct SettlCurrency;
@@ -967,19 +967,19 @@ impl Field for QuoteReqID { const TAG: Tag = 131; type Value = String; }
 
 /// BidPx (132).
 pub struct BidPx;
-impl Field for BidPx { const TAG: Tag = 132; type Value = f64; }
+impl Field for BidPx { const TAG: Tag = 132; type Value = crate::Amount; }
 
 /// OfferPx (133).
 pub struct OfferPx;
-impl Field for OfferPx { const TAG: Tag = 133; type Value = f64; }
+impl Field for OfferPx { const TAG: Tag = 133; type Value = crate::Amount; }
 
 /// BidSize (134).
 pub struct BidSize;
-impl Field for BidSize { const TAG: Tag = 134; type Value = f64; }
+impl Field for BidSize { const TAG: Tag = 134; type Value = crate::Amount; }
 
 /// OfferSize (135).
 pub struct OfferSize;
-impl Field for OfferSize { const TAG: Tag = 135; type Value = f64; }
+impl Field for OfferSize { const TAG: Tag = 135; type Value = crate::Amount; }
 
 /// NoMiscFees (136).
 pub struct NoMiscFees;
@@ -987,7 +987,7 @@ impl Field for NoMiscFees { const TAG: Tag = 136; type Value = i64; }
 
 /// MiscFeeAmt (137).
 pub struct MiscFeeAmt;
-impl Field for MiscFeeAmt { const TAG: Tag = 137; type Value = f64; }
+impl Field for MiscFeeAmt { const TAG: Tag = 137; type Value = crate::Amount; }
 
 /// MiscFeeCurr (138).
 pub struct MiscFeeCurr;
@@ -1013,7 +1013,7 @@ impl MiscFeeType {
 
 /// PrevClosePx (140).
 pub struct PrevClosePx;
-impl Field for PrevClosePx { const TAG: Tag = 140; type Value = f64; }
+impl Field for PrevClosePx { const TAG: Tag = 140; type Value = crate::Amount; }
 
 /// ResetSeqNumFlag (141).
 pub struct ResetSeqNumFlag;
@@ -1076,23 +1076,23 @@ impl ExecType {
 
 /// LeavesQty (151).
 pub struct LeavesQty;
-impl Field for LeavesQty { const TAG: Tag = 151; type Value = f64; }
+impl Field for LeavesQty { const TAG: Tag = 151; type Value = crate::Amount; }
 
 /// CashOrderQty (152).
 pub struct CashOrderQty;
-impl Field for CashOrderQty { const TAG: Tag = 152; type Value = f64; }
+impl Field for CashOrderQty { const TAG: Tag = 152; type Value = crate::Amount; }
 
 /// AllocAvgPx (153).
 pub struct AllocAvgPx;
-impl Field for AllocAvgPx { const TAG: Tag = 153; type Value = f64; }
+impl Field for AllocAvgPx { const TAG: Tag = 153; type Value = crate::Amount; }
 
 /// AllocNetMoney (154).
 pub struct AllocNetMoney;
-impl Field for AllocNetMoney { const TAG: Tag = 154; type Value = f64; }
+impl Field for AllocNetMoney { const TAG: Tag = 154; type Value = crate::Amount; }
 
 /// SettlCurrFxRate (155).
 pub struct SettlCurrFxRate;
-impl Field for SettlCurrFxRate { const TAG: Tag = 155; type Value = f64; }
+impl Field for SettlCurrFxRate { const TAG: Tag = 155; type Value = crate::Amount; }
 
 /// SettlCurrFxRateCalc (156).
 pub struct SettlCurrFxRateCalc;
@@ -1108,11 +1108,11 @@ impl Field for NumDaysInterest { const TAG: Tag = 157; type Value = i64; }
 
 /// AccruedInterestRate (158).
 pub struct AccruedInterestRate;
-impl Field for AccruedInterestRate { const TAG: Tag = 158; type Value = f64; }
+impl Field for AccruedInterestRate { const TAG: Tag = 158; type Value = crate::Amount; }
 
 /// AccruedInterestAmt (159).
 pub struct AccruedInterestAmt;
-impl Field for AccruedInterestAmt { const TAG: Tag = 159; type Value = f64; }
+impl Field for AccruedInterestAmt { const TAG: Tag = 159; type Value = crate::Amount; }
 
 /// SettlInstMode (160).
 pub struct SettlInstMode;
@@ -1361,23 +1361,23 @@ impl Field for CashSettlAgentContactPhone { const TAG: Tag = 187; type Value = S
 
 /// BidSpotRate (188).
 pub struct BidSpotRate;
-impl Field for BidSpotRate { const TAG: Tag = 188; type Value = f64; }
+impl Field for BidSpotRate { const TAG: Tag = 188; type Value = crate::Amount; }
 
 /// BidForwardPoints (189).
 pub struct BidForwardPoints;
-impl Field for BidForwardPoints { const TAG: Tag = 189; type Value = f64; }
+impl Field for BidForwardPoints { const TAG: Tag = 189; type Value = crate::Amount; }
 
 /// OfferSpotRate (190).
 pub struct OfferSpotRate;
-impl Field for OfferSpotRate { const TAG: Tag = 190; type Value = f64; }
+impl Field for OfferSpotRate { const TAG: Tag = 190; type Value = crate::Amount; }
 
 /// OfferForwardPoints (191).
 pub struct OfferForwardPoints;
-impl Field for OfferForwardPoints { const TAG: Tag = 191; type Value = f64; }
+impl Field for OfferForwardPoints { const TAG: Tag = 191; type Value = crate::Amount; }
 
 /// OrderQty2 (192).
 pub struct OrderQty2;
-impl Field for OrderQty2 { const TAG: Tag = 192; type Value = f64; }
+impl Field for OrderQty2 { const TAG: Tag = 192; type Value = crate::Amount; }
 
 /// SettlDate2 (193).
 pub struct SettlDate2;
@@ -1385,11 +1385,11 @@ impl Field for SettlDate2 { const TAG: Tag = 193; type Value = crate::FixDate; }
 
 /// LastSpotRate (194).
 pub struct LastSpotRate;
-impl Field for LastSpotRate { const TAG: Tag = 194; type Value = f64; }
+impl Field for LastSpotRate { const TAG: Tag = 194; type Value = crate::Amount; }
 
 /// LastForwardPoints (195).
 pub struct LastForwardPoints;
-impl Field for LastForwardPoints { const TAG: Tag = 195; type Value = f64; }
+impl Field for LastForwardPoints { const TAG: Tag = 195; type Value = crate::Amount; }
 
 /// AllocLinkID (196).
 pub struct AllocLinkID;
@@ -1425,7 +1425,7 @@ impl PutOrCall {
 
 /// StrikePrice (202).
 pub struct StrikePrice;
-impl Field for StrikePrice { const TAG: Tag = 202; type Value = f64; }
+impl Field for StrikePrice { const TAG: Tag = 202; type Value = crate::Amount; }
 
 /// CoveredOrUncovered (203).
 pub struct CoveredOrUncovered;
@@ -1470,11 +1470,11 @@ impl AllocHandlInst {
 
 /// MaxShow (210).
 pub struct MaxShow;
-impl Field for MaxShow { const TAG: Tag = 210; type Value = f64; }
+impl Field for MaxShow { const TAG: Tag = 210; type Value = crate::Amount; }
 
 /// PegOffsetValue (211).
 pub struct PegOffsetValue;
-impl Field for PegOffsetValue { const TAG: Tag = 211; type Value = f64; }
+impl Field for PegOffsetValue { const TAG: Tag = 211; type Value = crate::Amount; }
 
 /// XmlDataLen (212).
 pub struct XmlDataLen;
@@ -1508,7 +1508,7 @@ impl Field for RoutingID { const TAG: Tag = 217; type Value = String; }
 
 /// Spread (218).
 pub struct Spread;
-impl Field for Spread { const TAG: Tag = 218; type Value = f64; }
+impl Field for Spread { const TAG: Tag = 218; type Value = crate::Amount; }
 
 /// Benchmark (219).
 pub struct Benchmark;
@@ -1553,7 +1553,7 @@ impl Field for BenchmarkCurvePoint { const TAG: Tag = 222; type Value = String; 
 
 /// CouponRate (223).
 pub struct CouponRate;
-impl Field for CouponRate { const TAG: Tag = 223; type Value = f64; }
+impl Field for CouponRate { const TAG: Tag = 223; type Value = crate::Amount; }
 
 /// CouponPaymentDate (224).
 pub struct CouponPaymentDate;
@@ -1569,11 +1569,11 @@ impl Field for RepurchaseTerm { const TAG: Tag = 226; type Value = i64; }
 
 /// RepurchaseRate (227).
 pub struct RepurchaseRate;
-impl Field for RepurchaseRate { const TAG: Tag = 227; type Value = f64; }
+impl Field for RepurchaseRate { const TAG: Tag = 227; type Value = crate::Amount; }
 
 /// Factor (228).
 pub struct Factor;
-impl Field for Factor { const TAG: Tag = 228; type Value = f64; }
+impl Field for Factor { const TAG: Tag = 228; type Value = crate::Amount; }
 
 /// TradeOriginationDate (229).
 pub struct TradeOriginationDate;
@@ -1585,7 +1585,7 @@ impl Field for ExDate { const TAG: Tag = 230; type Value = crate::FixDate; }
 
 /// ContractMultiplier (231).
 pub struct ContractMultiplier;
-impl Field for ContractMultiplier { const TAG: Tag = 231; type Value = f64; }
+impl Field for ContractMultiplier { const TAG: Tag = 231; type Value = crate::Amount; }
 
 /// NoStipulations (232).
 pub struct NoStipulations;
@@ -1705,15 +1705,15 @@ impl YieldType {
 
 /// Yield (236).
 pub struct Yield;
-impl Field for Yield { const TAG: Tag = 236; type Value = f64; }
+impl Field for Yield { const TAG: Tag = 236; type Value = crate::Amount; }
 
 /// TotalTakedown (237).
 pub struct TotalTakedown;
-impl Field for TotalTakedown { const TAG: Tag = 237; type Value = f64; }
+impl Field for TotalTakedown { const TAG: Tag = 237; type Value = crate::Amount; }
 
 /// Concession (238).
 pub struct Concession;
-impl Field for Concession { const TAG: Tag = 238; type Value = f64; }
+impl Field for Concession { const TAG: Tag = 238; type Value = crate::Amount; }
 
 /// RepoCollateralSecurityType (239).
 pub struct RepoCollateralSecurityType;
@@ -1741,11 +1741,11 @@ impl Field for UnderlyingRepurchaseTerm { const TAG: Tag = 244; type Value = i64
 
 /// UnderlyingRepurchaseRate (245).
 pub struct UnderlyingRepurchaseRate;
-impl Field for UnderlyingRepurchaseRate { const TAG: Tag = 245; type Value = f64; }
+impl Field for UnderlyingRepurchaseRate { const TAG: Tag = 245; type Value = crate::Amount; }
 
 /// UnderlyingFactor (246).
 pub struct UnderlyingFactor;
-impl Field for UnderlyingFactor { const TAG: Tag = 246; type Value = f64; }
+impl Field for UnderlyingFactor { const TAG: Tag = 246; type Value = crate::Amount; }
 
 /// UnderlyingRedemptionDate (247).
 pub struct UnderlyingRedemptionDate;
@@ -1769,11 +1769,11 @@ impl Field for LegRepurchaseTerm { const TAG: Tag = 251; type Value = i64; }
 
 /// LegRepurchaseRate (252).
 pub struct LegRepurchaseRate;
-impl Field for LegRepurchaseRate { const TAG: Tag = 252; type Value = f64; }
+impl Field for LegRepurchaseRate { const TAG: Tag = 252; type Value = crate::Amount; }
 
 /// LegFactor (253).
 pub struct LegFactor;
-impl Field for LegFactor { const TAG: Tag = 253; type Value = f64; }
+impl Field for LegFactor { const TAG: Tag = 253; type Value = crate::Amount; }
 
 /// LegRedemptionDate (254).
 pub struct LegRedemptionDate;
@@ -1801,7 +1801,7 @@ impl Field for BasisFeatureDate { const TAG: Tag = 259; type Value = crate::FixD
 
 /// BasisFeaturePrice (260).
 pub struct BasisFeaturePrice;
-impl Field for BasisFeaturePrice { const TAG: Tag = 260; type Value = f64; }
+impl Field for BasisFeaturePrice { const TAG: Tag = 260; type Value = crate::Amount; }
 
 /// MDReqID (262).
 pub struct MDReqID;
@@ -1861,11 +1861,11 @@ impl MDEntryType {
 
 /// MDEntryPx (270).
 pub struct MDEntryPx;
-impl Field for MDEntryPx { const TAG: Tag = 270; type Value = f64; }
+impl Field for MDEntryPx { const TAG: Tag = 270; type Value = crate::Amount; }
 
 /// MDEntrySize (271).
 pub struct MDEntrySize;
-impl Field for MDEntrySize { const TAG: Tag = 271; type Value = f64; }
+impl Field for MDEntrySize { const TAG: Tag = 271; type Value = crate::Amount; }
 
 /// MDEntryDate (272).
 pub struct MDEntryDate;
@@ -2032,11 +2032,11 @@ impl CorporateAction {
 
 /// DefBidSize (293).
 pub struct DefBidSize;
-impl Field for DefBidSize { const TAG: Tag = 293; type Value = f64; }
+impl Field for DefBidSize { const TAG: Tag = 293; type Value = crate::Amount; }
 
 /// DefOfferSize (294).
 pub struct DefOfferSize;
-impl Field for DefOfferSize { const TAG: Tag = 294; type Value = f64; }
+impl Field for DefOfferSize { const TAG: Tag = 294; type Value = crate::Amount; }
 
 /// NoQuoteEntries (295).
 pub struct NoQuoteEntries;
@@ -2169,7 +2169,7 @@ impl Field for UnderlyingPutOrCall { const TAG: Tag = 315; type Value = i64; }
 
 /// UnderlyingStrikePrice (316).
 pub struct UnderlyingStrikePrice;
-impl Field for UnderlyingStrikePrice { const TAG: Tag = 316; type Value = f64; }
+impl Field for UnderlyingStrikePrice { const TAG: Tag = 316; type Value = crate::Amount; }
 
 /// UnderlyingOptAttribute (317).
 pub struct UnderlyingOptAttribute;
@@ -2181,7 +2181,7 @@ impl Field for UnderlyingCurrency { const TAG: Tag = 318; type Value = String; }
 
 /// RatioQty (319).
 pub struct RatioQty;
-impl Field for RatioQty { const TAG: Tag = 319; type Value = f64; }
+impl Field for RatioQty { const TAG: Tag = 319; type Value = crate::Amount; }
 
 /// SecurityReqID (320).
 pub struct SecurityReqID;
@@ -2272,19 +2272,19 @@ impl Field for DueToRelated { const TAG: Tag = 329; type Value = bool; }
 
 /// BuyVolume (330).
 pub struct BuyVolume;
-impl Field for BuyVolume { const TAG: Tag = 330; type Value = f64; }
+impl Field for BuyVolume { const TAG: Tag = 330; type Value = crate::Amount; }
 
 /// SellVolume (331).
 pub struct SellVolume;
-impl Field for SellVolume { const TAG: Tag = 331; type Value = f64; }
+impl Field for SellVolume { const TAG: Tag = 331; type Value = crate::Amount; }
 
 /// HighPx (332).
 pub struct HighPx;
-impl Field for HighPx { const TAG: Tag = 332; type Value = f64; }
+impl Field for HighPx { const TAG: Tag = 332; type Value = crate::Amount; }
 
 /// LowPx (333).
 pub struct LowPx;
-impl Field for LowPx { const TAG: Tag = 333; type Value = f64; }
+impl Field for LowPx { const TAG: Tag = 333; type Value = crate::Amount; }
 
 /// Adjustment (334).
 pub struct Adjustment;
@@ -2440,7 +2440,7 @@ impl Field for EncodedUnderlyingSecurityDesc { const TAG: Tag = 365; type Value 
 
 /// AllocPrice (366).
 pub struct AllocPrice;
-impl Field for AllocPrice { const TAG: Tag = 366; type Value = f64; }
+impl Field for AllocPrice { const TAG: Tag = 366; type Value = crate::Amount; }
 
 /// QuoteSetValidUntilTime (367).
 pub struct QuoteSetValidUntilTime;
@@ -2561,7 +2561,7 @@ impl BusinessRejectReason {
 
 /// GrossTradeAmt (381).
 pub struct GrossTradeAmt;
-impl Field for GrossTradeAmt { const TAG: Tag = 381; type Value = f64; }
+impl Field for GrossTradeAmt { const TAG: Tag = 381; type Value = crate::Amount; }
 
 /// NoContraBrokers (382).
 pub struct NoContraBrokers;
@@ -2589,7 +2589,7 @@ impl Field for NoTradingSessions { const TAG: Tag = 386; type Value = i64; }
 
 /// TotalVolumeTraded (387).
 pub struct TotalVolumeTraded;
-impl Field for TotalVolumeTraded { const TAG: Tag = 387; type Value = f64; }
+impl Field for TotalVolumeTraded { const TAG: Tag = 387; type Value = crate::Amount; }
 
 /// DiscretionInst (388).
 pub struct DiscretionInst;
@@ -2606,7 +2606,7 @@ impl DiscretionInst {
 
 /// DiscretionOffsetValue (389).
 pub struct DiscretionOffsetValue;
-impl Field for DiscretionOffsetValue { const TAG: Tag = 389; type Value = f64; }
+impl Field for DiscretionOffsetValue { const TAG: Tag = 389; type Value = crate::Amount; }
 
 /// BidID (390).
 pub struct BidID;
@@ -2639,11 +2639,11 @@ impl Field for NumTickets { const TAG: Tag = 395; type Value = i64; }
 
 /// SideValue1 (396).
 pub struct SideValue1;
-impl Field for SideValue1 { const TAG: Tag = 396; type Value = f64; }
+impl Field for SideValue1 { const TAG: Tag = 396; type Value = crate::Amount; }
 
 /// SideValue2 (397).
 pub struct SideValue2;
-impl Field for SideValue2 { const TAG: Tag = 397; type Value = f64; }
+impl Field for SideValue2 { const TAG: Tag = 397; type Value = crate::Amount; }
 
 /// NoBidDescriptors (398).
 pub struct NoBidDescriptors;
@@ -2672,31 +2672,31 @@ impl SideValueInd {
 
 /// LiquidityPctLow (402).
 pub struct LiquidityPctLow;
-impl Field for LiquidityPctLow { const TAG: Tag = 402; type Value = f64; }
+impl Field for LiquidityPctLow { const TAG: Tag = 402; type Value = crate::Amount; }
 
 /// LiquidityPctHigh (403).
 pub struct LiquidityPctHigh;
-impl Field for LiquidityPctHigh { const TAG: Tag = 403; type Value = f64; }
+impl Field for LiquidityPctHigh { const TAG: Tag = 403; type Value = crate::Amount; }
 
 /// LiquidityValue (404).
 pub struct LiquidityValue;
-impl Field for LiquidityValue { const TAG: Tag = 404; type Value = f64; }
+impl Field for LiquidityValue { const TAG: Tag = 404; type Value = crate::Amount; }
 
 /// EFPTrackingError (405).
 pub struct EFPTrackingError;
-impl Field for EFPTrackingError { const TAG: Tag = 405; type Value = f64; }
+impl Field for EFPTrackingError { const TAG: Tag = 405; type Value = crate::Amount; }
 
 /// FairValue (406).
 pub struct FairValue;
-impl Field for FairValue { const TAG: Tag = 406; type Value = f64; }
+impl Field for FairValue { const TAG: Tag = 406; type Value = crate::Amount; }
 
 /// OutsideIndexPct (407).
 pub struct OutsideIndexPct;
-impl Field for OutsideIndexPct { const TAG: Tag = 407; type Value = f64; }
+impl Field for OutsideIndexPct { const TAG: Tag = 407; type Value = crate::Amount; }
 
 /// ValueOfFutures (408).
 pub struct ValueOfFutures;
-impl Field for ValueOfFutures { const TAG: Tag = 408; type Value = f64; }
+impl Field for ValueOfFutures { const TAG: Tag = 408; type Value = crate::Amount; }
 
 /// LiquidityIndType (409).
 pub struct LiquidityIndType;
@@ -2710,7 +2710,7 @@ impl LiquidityIndType {
 
 /// WtAverageLiquidity (410).
 pub struct WtAverageLiquidity;
-impl Field for WtAverageLiquidity { const TAG: Tag = 410; type Value = f64; }
+impl Field for WtAverageLiquidity { const TAG: Tag = 410; type Value = crate::Amount; }
 
 /// ExchangeForPhysical (411).
 pub struct ExchangeForPhysical;
@@ -2718,11 +2718,11 @@ impl Field for ExchangeForPhysical { const TAG: Tag = 411; type Value = bool; }
 
 /// OutMainCntryUIndex (412).
 pub struct OutMainCntryUIndex;
-impl Field for OutMainCntryUIndex { const TAG: Tag = 412; type Value = f64; }
+impl Field for OutMainCntryUIndex { const TAG: Tag = 412; type Value = crate::Amount; }
 
 /// CrossPercent (413).
 pub struct CrossPercent;
-impl Field for CrossPercent { const TAG: Tag = 413; type Value = f64; }
+impl Field for CrossPercent { const TAG: Tag = 413; type Value = crate::Amount; }
 
 /// ProgRptReqs (414).
 pub struct ProgRptReqs;
@@ -2809,15 +2809,15 @@ impl PriceType {
 
 /// DayOrderQty (424).
 pub struct DayOrderQty;
-impl Field for DayOrderQty { const TAG: Tag = 424; type Value = f64; }
+impl Field for DayOrderQty { const TAG: Tag = 424; type Value = crate::Amount; }
 
 /// DayCumQty (425).
 pub struct DayCumQty;
-impl Field for DayCumQty { const TAG: Tag = 425; type Value = f64; }
+impl Field for DayCumQty { const TAG: Tag = 425; type Value = crate::Amount; }
 
 /// DayAvgPx (426).
 pub struct DayAvgPx;
-impl Field for DayAvgPx { const TAG: Tag = 426; type Value = f64; }
+impl Field for DayAvgPx { const TAG: Tag = 426; type Value = crate::Amount; }
 
 /// GTBookingInst (427).
 pub struct GTBookingInst;
@@ -2890,15 +2890,15 @@ impl CxlRejResponseTo {
 
 /// UnderlyingCouponRate (435).
 pub struct UnderlyingCouponRate;
-impl Field for UnderlyingCouponRate { const TAG: Tag = 435; type Value = f64; }
+impl Field for UnderlyingCouponRate { const TAG: Tag = 435; type Value = crate::Amount; }
 
 /// UnderlyingContractMultiplier (436).
 pub struct UnderlyingContractMultiplier;
-impl Field for UnderlyingContractMultiplier { const TAG: Tag = 436; type Value = f64; }
+impl Field for UnderlyingContractMultiplier { const TAG: Tag = 436; type Value = crate::Amount; }
 
 /// ContraTradeQty (437).
 pub struct ContraTradeQty;
-impl Field for ContraTradeQty { const TAG: Tag = 437; type Value = f64; }
+impl Field for ContraTradeQty { const TAG: Tag = 437; type Value = crate::Amount; }
 
 /// ContraTradeTime (438).
 pub struct ContraTradeTime;
@@ -2979,7 +2979,7 @@ impl Field for TotalVolumeTradedTime { const TAG: Tag = 450; type Value = String
 
 /// NetChgPrevDay (451).
 pub struct NetChgPrevDay;
-impl Field for NetChgPrevDay { const TAG: Tag = 451; type Value = f64; }
+impl Field for NetChgPrevDay { const TAG: Tag = 451; type Value = crate::Amount; }
 
 /// PartyRole (452).
 pub struct PartyRole;
@@ -3121,7 +3121,7 @@ impl RoundingDirection {
 
 /// RoundingModulus (469).
 pub struct RoundingModulus;
-impl Field for RoundingModulus { const TAG: Tag = 469; type Value = f64; }
+impl Field for RoundingModulus { const TAG: Tag = 469; type Value = crate::Amount; }
 
 /// CountryOfIssue (470).
 pub struct CountryOfIssue;
@@ -3222,7 +3222,7 @@ impl ExecPriceType {
 
 /// ExecPriceAdjustment (485).
 pub struct ExecPriceAdjustment;
-impl Field for ExecPriceAdjustment { const TAG: Tag = 485; type Value = f64; }
+impl Field for ExecPriceAdjustment { const TAG: Tag = 485; type Value = crate::Amount; }
 
 /// DateOfBirth (486).
 pub struct DateOfBirth;
@@ -3418,7 +3418,7 @@ impl Field for RegistEmail { const TAG: Tag = 511; type Value = String; }
 
 /// DistribPercentage (512).
 pub struct DistribPercentage;
-impl Field for DistribPercentage { const TAG: Tag = 512; type Value = f64; }
+impl Field for DistribPercentage { const TAG: Tag = 512; type Value = crate::Amount; }
 
 /// RegistID (513).
 pub struct RegistID;
@@ -3439,7 +3439,7 @@ impl Field for ExecValuationPoint { const TAG: Tag = 515; type Value = crate::Ut
 
 /// OrderPercent (516).
 pub struct OrderPercent;
-impl Field for OrderPercent { const TAG: Tag = 516; type Value = f64; }
+impl Field for OrderPercent { const TAG: Tag = 516; type Value = crate::Amount; }
 
 /// OwnershipType (517).
 pub struct OwnershipType;
@@ -3477,7 +3477,7 @@ impl ContAmtType {
 
 /// ContAmtValue (520).
 pub struct ContAmtValue;
-impl Field for ContAmtValue { const TAG: Tag = 520; type Value = f64; }
+impl Field for ContAmtValue { const TAG: Tag = 520; type Value = crate::Amount; }
 
 /// ContAmtCurr (521).
 pub struct ContAmtCurr;
@@ -3627,7 +3627,7 @@ impl Field for NoNestedPartyIDs { const TAG: Tag = 539; type Value = i64; }
 
 /// TotalAccruedInterestAmt (540).
 pub struct TotalAccruedInterestAmt;
-impl Field for TotalAccruedInterestAmt { const TAG: Tag = 540; type Value = f64; }
+impl Field for TotalAccruedInterestAmt { const TAG: Tag = 540; type Value = crate::Amount; }
 
 /// MaturityDate (541).
 pub struct MaturityDate;
@@ -3756,11 +3756,11 @@ impl SecurityRequestResult {
 
 /// RoundLot (561).
 pub struct RoundLot;
-impl Field for RoundLot { const TAG: Tag = 561; type Value = f64; }
+impl Field for RoundLot { const TAG: Tag = 561; type Value = crate::Amount; }
 
 /// MinTradeVol (562).
 pub struct MinTradeVol;
-impl Field for MinTradeVol { const TAG: Tag = 562; type Value = f64; }
+impl Field for MinTradeVol { const TAG: Tag = 562; type Value = crate::Amount; }
 
 /// MultiLegRptTypeReq (563).
 pub struct MultiLegRptTypeReq;
@@ -3781,7 +3781,7 @@ impl Field for LegCoveredOrUncovered { const TAG: Tag = 565; type Value = i64; }
 
 /// LegPrice (566).
 pub struct LegPrice;
-impl Field for LegPrice { const TAG: Tag = 566; type Value = f64; }
+impl Field for LegPrice { const TAG: Tag = 566; type Value = crate::Amount; }
 
 /// TradSesStatusRejReason (567).
 pub struct TradSesStatusRejReason;
@@ -4059,7 +4059,7 @@ impl Field for LegMaturityDate { const TAG: Tag = 611; type Value = crate::FixDa
 
 /// LegStrikePrice (612).
 pub struct LegStrikePrice;
-impl Field for LegStrikePrice { const TAG: Tag = 612; type Value = f64; }
+impl Field for LegStrikePrice { const TAG: Tag = 612; type Value = crate::Amount; }
 
 /// LegOptAttribute (613).
 pub struct LegOptAttribute;
@@ -4067,11 +4067,11 @@ impl Field for LegOptAttribute { const TAG: Tag = 613; type Value = char; }
 
 /// LegContractMultiplier (614).
 pub struct LegContractMultiplier;
-impl Field for LegContractMultiplier { const TAG: Tag = 614; type Value = f64; }
+impl Field for LegContractMultiplier { const TAG: Tag = 614; type Value = crate::Amount; }
 
 /// LegCouponRate (615).
 pub struct LegCouponRate;
-impl Field for LegCouponRate { const TAG: Tag = 615; type Value = f64; }
+impl Field for LegCouponRate { const TAG: Tag = 615; type Value = crate::Amount; }
 
 /// LegSecurityExchange (616).
 pub struct LegSecurityExchange;
@@ -4103,7 +4103,7 @@ impl Field for EncodedLegSecurityDesc { const TAG: Tag = 622; type Value = Vec<u
 
 /// LegRatioQty (623).
 pub struct LegRatioQty;
-impl Field for LegRatioQty { const TAG: Tag = 623; type Value = f64; }
+impl Field for LegRatioQty { const TAG: Tag = 623; type Value = crate::Amount; }
 
 /// LegSide (624).
 pub struct LegSide;
@@ -4145,19 +4145,19 @@ impl Field for HopRefID { const TAG: Tag = 630; type Value = i64; }
 
 /// MidPx (631).
 pub struct MidPx;
-impl Field for MidPx { const TAG: Tag = 631; type Value = f64; }
+impl Field for MidPx { const TAG: Tag = 631; type Value = crate::Amount; }
 
 /// BidYield (632).
 pub struct BidYield;
-impl Field for BidYield { const TAG: Tag = 632; type Value = f64; }
+impl Field for BidYield { const TAG: Tag = 632; type Value = crate::Amount; }
 
 /// MidYield (633).
 pub struct MidYield;
-impl Field for MidYield { const TAG: Tag = 633; type Value = f64; }
+impl Field for MidYield { const TAG: Tag = 633; type Value = crate::Amount; }
 
 /// OfferYield (634).
 pub struct OfferYield;
-impl Field for OfferYield { const TAG: Tag = 634; type Value = f64; }
+impl Field for OfferYield { const TAG: Tag = 634; type Value = crate::Amount; }
 
 /// ClearingFeeIndicator (635).
 pub struct ClearingFeeIndicator;
@@ -4185,7 +4185,7 @@ impl Field for WorkingIndicator { const TAG: Tag = 636; type Value = bool; }
 
 /// LegLastPx (637).
 pub struct LegLastPx;
-impl Field for LegLastPx { const TAG: Tag = 637; type Value = f64; }
+impl Field for LegLastPx { const TAG: Tag = 637; type Value = crate::Amount; }
 
 /// PriorityIndicator (638).
 pub struct PriorityIndicator;
@@ -4197,23 +4197,23 @@ impl PriorityIndicator {
 
 /// PriceImprovement (639).
 pub struct PriceImprovement;
-impl Field for PriceImprovement { const TAG: Tag = 639; type Value = f64; }
+impl Field for PriceImprovement { const TAG: Tag = 639; type Value = crate::Amount; }
 
 /// Price2 (640).
 pub struct Price2;
-impl Field for Price2 { const TAG: Tag = 640; type Value = f64; }
+impl Field for Price2 { const TAG: Tag = 640; type Value = crate::Amount; }
 
 /// LastForwardPoints2 (641).
 pub struct LastForwardPoints2;
-impl Field for LastForwardPoints2 { const TAG: Tag = 641; type Value = f64; }
+impl Field for LastForwardPoints2 { const TAG: Tag = 641; type Value = crate::Amount; }
 
 /// BidForwardPoints2 (642).
 pub struct BidForwardPoints2;
-impl Field for BidForwardPoints2 { const TAG: Tag = 642; type Value = f64; }
+impl Field for BidForwardPoints2 { const TAG: Tag = 642; type Value = crate::Amount; }
 
 /// OfferForwardPoints2 (643).
 pub struct OfferForwardPoints2;
-impl Field for OfferForwardPoints2 { const TAG: Tag = 643; type Value = f64; }
+impl Field for OfferForwardPoints2 { const TAG: Tag = 643; type Value = crate::Amount; }
 
 /// RFQReqID (644).
 pub struct RFQReqID;
@@ -4221,19 +4221,19 @@ impl Field for RFQReqID { const TAG: Tag = 644; type Value = String; }
 
 /// MktBidPx (645).
 pub struct MktBidPx;
-impl Field for MktBidPx { const TAG: Tag = 645; type Value = f64; }
+impl Field for MktBidPx { const TAG: Tag = 645; type Value = crate::Amount; }
 
 /// MktOfferPx (646).
 pub struct MktOfferPx;
-impl Field for MktOfferPx { const TAG: Tag = 646; type Value = f64; }
+impl Field for MktOfferPx { const TAG: Tag = 646; type Value = crate::Amount; }
 
 /// MinBidSize (647).
 pub struct MinBidSize;
-impl Field for MinBidSize { const TAG: Tag = 647; type Value = f64; }
+impl Field for MinBidSize { const TAG: Tag = 647; type Value = crate::Amount; }
 
 /// MinOfferSize (648).
 pub struct MinOfferSize;
-impl Field for MinOfferSize { const TAG: Tag = 648; type Value = f64; }
+impl Field for MinOfferSize { const TAG: Tag = 648; type Value = crate::Amount; }
 
 /// QuoteStatusReqID (649).
 pub struct QuoteStatusReqID;
@@ -4245,11 +4245,11 @@ impl Field for LegalConfirm { const TAG: Tag = 650; type Value = bool; }
 
 /// UnderlyingLastPx (651).
 pub struct UnderlyingLastPx;
-impl Field for UnderlyingLastPx { const TAG: Tag = 651; type Value = f64; }
+impl Field for UnderlyingLastPx { const TAG: Tag = 651; type Value = crate::Amount; }
 
 /// UnderlyingLastQty (652).
 pub struct UnderlyingLastQty;
-impl Field for UnderlyingLastQty { const TAG: Tag = 652; type Value = f64; }
+impl Field for UnderlyingLastQty { const TAG: Tag = 652; type Value = crate::Amount; }
 
 /// SecDefStatus (653).
 pub struct SecDefStatus;
@@ -4272,11 +4272,11 @@ impl Field for ContraLegRefID { const TAG: Tag = 655; type Value = String; }
 
 /// SettlCurrBidFxRate (656).
 pub struct SettlCurrBidFxRate;
-impl Field for SettlCurrBidFxRate { const TAG: Tag = 656; type Value = f64; }
+impl Field for SettlCurrBidFxRate { const TAG: Tag = 656; type Value = crate::Amount; }
 
 /// SettlCurrOfferFxRate (657).
 pub struct SettlCurrOfferFxRate;
-impl Field for SettlCurrOfferFxRate { const TAG: Tag = 657; type Value = f64; }
+impl Field for SettlCurrOfferFxRate { const TAG: Tag = 657; type Value = crate::Amount; }
 
 /// QuoteRequestRejectReason (658).
 pub struct QuoteRequestRejectReason;
@@ -4317,7 +4317,7 @@ impl Field for AllocAcctIDSource { const TAG: Tag = 661; type Value = i64; }
 
 /// BenchmarkPrice (662).
 pub struct BenchmarkPrice;
-impl Field for BenchmarkPrice { const TAG: Tag = 662; type Value = f64; }
+impl Field for BenchmarkPrice { const TAG: Tag = 662; type Value = crate::Amount; }
 
 /// BenchmarkPriceType (663).
 pub struct BenchmarkPriceType;
@@ -4361,7 +4361,7 @@ impl DeliveryForm {
 
 /// LastParPx (669).
 pub struct LastParPx;
-impl Field for LastParPx { const TAG: Tag = 669; type Value = f64; }
+impl Field for LastParPx { const TAG: Tag = 669; type Value = crate::Amount; }
 
 /// NoLegAllocs (670).
 pub struct NoLegAllocs;
@@ -4377,7 +4377,7 @@ impl Field for LegIndividualAllocID { const TAG: Tag = 672; type Value = String;
 
 /// LegAllocQty (673).
 pub struct LegAllocQty;
-impl Field for LegAllocQty { const TAG: Tag = 673; type Value = f64; }
+impl Field for LegAllocQty { const TAG: Tag = 673; type Value = crate::Amount; }
 
 /// LegAllocAcctIDSource (674).
 pub struct LegAllocAcctIDSource;
@@ -4401,7 +4401,7 @@ impl Field for LegBenchmarkCurvePoint { const TAG: Tag = 678; type Value = Strin
 
 /// LegBenchmarkPrice (679).
 pub struct LegBenchmarkPrice;
-impl Field for LegBenchmarkPrice { const TAG: Tag = 679; type Value = f64; }
+impl Field for LegBenchmarkPrice { const TAG: Tag = 679; type Value = crate::Amount; }
 
 /// LegBenchmarkPriceType (680).
 pub struct LegBenchmarkPriceType;
@@ -4409,7 +4409,7 @@ impl Field for LegBenchmarkPriceType { const TAG: Tag = 680; type Value = i64; }
 
 /// LegBidPx (681).
 pub struct LegBidPx;
-impl Field for LegBidPx { const TAG: Tag = 681; type Value = f64; }
+impl Field for LegBidPx { const TAG: Tag = 681; type Value = crate::Amount; }
 
 /// LegIOIQty (682).
 pub struct LegIOIQty;
@@ -4421,11 +4421,11 @@ impl Field for NoLegStipulations { const TAG: Tag = 683; type Value = i64; }
 
 /// LegOfferPx (684).
 pub struct LegOfferPx;
-impl Field for LegOfferPx { const TAG: Tag = 684; type Value = f64; }
+impl Field for LegOfferPx { const TAG: Tag = 684; type Value = crate::Amount; }
 
 /// LegOrderQty (685).
 pub struct LegOrderQty;
-impl Field for LegOrderQty { const TAG: Tag = 685; type Value = f64; }
+impl Field for LegOrderQty { const TAG: Tag = 685; type Value = crate::Amount; }
 
 /// LegPriceType (686).
 pub struct LegPriceType;
@@ -4433,7 +4433,7 @@ impl Field for LegPriceType { const TAG: Tag = 686; type Value = i64; }
 
 /// LegQty (687).
 pub struct LegQty;
-impl Field for LegQty { const TAG: Tag = 687; type Value = f64; }
+impl Field for LegQty { const TAG: Tag = 687; type Value = crate::Amount; }
 
 /// LegStipulationType (688).
 pub struct LegStipulationType;
@@ -4499,7 +4499,7 @@ impl Field for YieldRedemptionDate { const TAG: Tag = 696; type Value = crate::F
 
 /// YieldRedemptionPrice (697).
 pub struct YieldRedemptionPrice;
-impl Field for YieldRedemptionPrice { const TAG: Tag = 697; type Value = f64; }
+impl Field for YieldRedemptionPrice { const TAG: Tag = 697; type Value = crate::Amount; }
 
 /// YieldRedemptionPriceType (698).
 pub struct YieldRedemptionPriceType;
@@ -4548,11 +4548,11 @@ impl PosType {
 
 /// LongQty (704).
 pub struct LongQty;
-impl Field for LongQty { const TAG: Tag = 704; type Value = f64; }
+impl Field for LongQty { const TAG: Tag = 704; type Value = crate::Amount; }
 
 /// ShortQty (705).
 pub struct ShortQty;
-impl Field for ShortQty { const TAG: Tag = 705; type Value = f64; }
+impl Field for ShortQty { const TAG: Tag = 705; type Value = crate::Amount; }
 
 /// PosQtyStatus (706).
 pub struct PosQtyStatus;
@@ -4579,7 +4579,7 @@ impl PosAmtType {
 
 /// PosAmt (708).
 pub struct PosAmt;
-impl Field for PosAmt { const TAG: Tag = 708; type Value = f64; }
+impl Field for PosAmt { const TAG: Tag = 708; type Value = crate::Amount; }
 
 /// PosTransType (709).
 pub struct PosTransType;
@@ -4720,7 +4720,7 @@ impl PosReqStatus {
 
 /// SettlPrice (730).
 pub struct SettlPrice;
-impl Field for SettlPrice { const TAG: Tag = 730; type Value = f64; }
+impl Field for SettlPrice { const TAG: Tag = 730; type Value = crate::Amount; }
 
 /// SettlPriceType (731).
 pub struct SettlPriceType;
@@ -4732,7 +4732,7 @@ impl SettlPriceType {
 
 /// UnderlyingSettlPrice (732).
 pub struct UnderlyingSettlPrice;
-impl Field for UnderlyingSettlPrice { const TAG: Tag = 732; type Value = f64; }
+impl Field for UnderlyingSettlPrice { const TAG: Tag = 732; type Value = crate::Amount; }
 
 /// UnderlyingSettlPriceType (733).
 pub struct UnderlyingSettlPriceType;
@@ -4740,7 +4740,7 @@ impl Field for UnderlyingSettlPriceType { const TAG: Tag = 733; type Value = i64
 
 /// PriorSettlPrice (734).
 pub struct PriorSettlPrice;
-impl Field for PriorSettlPrice { const TAG: Tag = 734; type Value = f64; }
+impl Field for PriorSettlPrice { const TAG: Tag = 734; type Value = crate::Amount; }
 
 /// NoQuoteQualifiers (735).
 pub struct NoQuoteQualifiers;
@@ -4752,11 +4752,11 @@ impl Field for AllocSettlCurrency { const TAG: Tag = 736; type Value = String; }
 
 /// AllocSettlCurrAmt (737).
 pub struct AllocSettlCurrAmt;
-impl Field for AllocSettlCurrAmt { const TAG: Tag = 737; type Value = f64; }
+impl Field for AllocSettlCurrAmt { const TAG: Tag = 737; type Value = crate::Amount; }
 
 /// InterestAtMaturity (738).
 pub struct InterestAtMaturity;
-impl Field for InterestAtMaturity { const TAG: Tag = 738; type Value = f64; }
+impl Field for InterestAtMaturity { const TAG: Tag = 738; type Value = crate::Amount; }
 
 /// LegDatedDate (739).
 pub struct LegDatedDate;
@@ -4768,11 +4768,11 @@ impl Field for LegPool { const TAG: Tag = 740; type Value = String; }
 
 /// AllocInterestAtMaturity (741).
 pub struct AllocInterestAtMaturity;
-impl Field for AllocInterestAtMaturity { const TAG: Tag = 741; type Value = f64; }
+impl Field for AllocInterestAtMaturity { const TAG: Tag = 741; type Value = crate::Amount; }
 
 /// AllocAccruedInterestAmt (742).
 pub struct AllocAccruedInterestAmt;
-impl Field for AllocAccruedInterestAmt { const TAG: Tag = 742; type Value = f64; }
+impl Field for AllocAccruedInterestAmt { const TAG: Tag = 742; type Value = crate::Amount; }
 
 /// DeliveryDate (743).
 pub struct DeliveryDate;
@@ -4788,11 +4788,11 @@ impl AssignmentMethod {
 
 /// AssignmentUnit (745).
 pub struct AssignmentUnit;
-impl Field for AssignmentUnit { const TAG: Tag = 745; type Value = f64; }
+impl Field for AssignmentUnit { const TAG: Tag = 745; type Value = crate::Amount; }
 
 /// OpenInterest (746).
 pub struct OpenInterest;
-impl Field for OpenInterest { const TAG: Tag = 746; type Value = f64; }
+impl Field for OpenInterest { const TAG: Tag = 746; type Value = crate::Amount; }
 
 /// ExerciseMethod (747).
 pub struct ExerciseMethod;
@@ -4901,11 +4901,11 @@ impl Field for LegSecuritySubType { const TAG: Tag = 764; type Value = String; }
 
 /// AllowableOneSidednessPct (765).
 pub struct AllowableOneSidednessPct;
-impl Field for AllowableOneSidednessPct { const TAG: Tag = 765; type Value = f64; }
+impl Field for AllowableOneSidednessPct { const TAG: Tag = 765; type Value = crate::Amount; }
 
 /// AllowableOneSidednessValue (766).
 pub struct AllowableOneSidednessValue;
-impl Field for AllowableOneSidednessValue { const TAG: Tag = 766; type Value = f64; }
+impl Field for AllowableOneSidednessValue { const TAG: Tag = 766; type Value = crate::Amount; }
 
 /// AllowableOneSidednessCurr (767).
 pub struct AllowableOneSidednessCurr;
@@ -5102,11 +5102,11 @@ impl AllocAccountType {
 
 /// OrderAvgPx (799).
 pub struct OrderAvgPx;
-impl Field for OrderAvgPx { const TAG: Tag = 799; type Value = f64; }
+impl Field for OrderAvgPx { const TAG: Tag = 799; type Value = crate::Amount; }
 
 /// OrderBookingQty (800).
 pub struct OrderBookingQty;
-impl Field for OrderBookingQty { const TAG: Tag = 800; type Value = f64; }
+impl Field for OrderBookingQty { const TAG: Tag = 800; type Value = crate::Amount; }
 
 /// NoSettlPartySubIDs (801).
 pub struct NoSettlPartySubIDs;
@@ -5179,11 +5179,11 @@ impl AllocIntermedReqType {
 
 /// UnderlyingPx (810).
 pub struct UnderlyingPx;
-impl Field for UnderlyingPx { const TAG: Tag = 810; type Value = f64; }
+impl Field for UnderlyingPx { const TAG: Tag = 810; type Value = crate::Amount; }
 
 /// PriceDelta (811).
 pub struct PriceDelta;
-impl Field for PriceDelta { const TAG: Tag = 811; type Value = f64; }
+impl Field for PriceDelta { const TAG: Tag = 811; type Value = crate::Amount; }
 
 /// ApplQueueMax (812).
 pub struct ApplQueueMax;
@@ -5314,7 +5314,7 @@ impl Field for AsgnRptID { const TAG: Tag = 833; type Value = String; }
 
 /// ThresholdAmount (834).
 pub struct ThresholdAmount;
-impl Field for ThresholdAmount { const TAG: Tag = 834; type Value = f64; }
+impl Field for ThresholdAmount { const TAG: Tag = 834; type Value = crate::Amount; }
 
 /// PegMoveType (835).
 pub struct PegMoveType;
@@ -5353,7 +5353,7 @@ impl PegRoundDirection {
 
 /// PeggedPrice (839).
 pub struct PeggedPrice;
-impl Field for PeggedPrice { const TAG: Tag = 839; type Value = f64; }
+impl Field for PeggedPrice { const TAG: Tag = 839; type Value = crate::Amount; }
 
 /// PegScope (840).
 pub struct PegScope;
@@ -5402,7 +5402,7 @@ impl DiscretionRoundDirection {
 
 /// DiscretionPrice (845).
 pub struct DiscretionPrice;
-impl Field for DiscretionPrice { const TAG: Tag = 845; type Value = f64; }
+impl Field for DiscretionPrice { const TAG: Tag = 845; type Value = crate::Amount; }
 
 /// DiscretionScope (846).
 pub struct DiscretionScope;
@@ -5430,11 +5430,11 @@ impl Field for TargetStrategyParameters { const TAG: Tag = 848; type Value = Str
 
 /// ParticipationRate (849).
 pub struct ParticipationRate;
-impl Field for ParticipationRate { const TAG: Tag = 849; type Value = f64; }
+impl Field for ParticipationRate { const TAG: Tag = 849; type Value = crate::Amount; }
 
 /// TargetStrategyPerformance (850).
 pub struct TargetStrategyPerformance;
-impl Field for TargetStrategyPerformance { const TAG: Tag = 850; type Value = f64; }
+impl Field for TargetStrategyPerformance { const TAG: Tag = 850; type Value = crate::Amount; }
 
 /// LastLiquidityInd (851).
 pub struct LastLiquidityInd;
@@ -5497,7 +5497,7 @@ impl AllocNoOrdersType {
 
 /// SharedCommission (858).
 pub struct SharedCommission;
-impl Field for SharedCommission { const TAG: Tag = 858; type Value = f64; }
+impl Field for SharedCommission { const TAG: Tag = 858; type Value = crate::Amount; }
 
 /// ConfirmReqID (859).
 pub struct ConfirmReqID;
@@ -5505,11 +5505,11 @@ impl Field for ConfirmReqID { const TAG: Tag = 859; type Value = String; }
 
 /// AvgParPx (860).
 pub struct AvgParPx;
-impl Field for AvgParPx { const TAG: Tag = 860; type Value = f64; }
+impl Field for AvgParPx { const TAG: Tag = 860; type Value = crate::Amount; }
 
 /// ReportedPx (861).
 pub struct ReportedPx;
-impl Field for ReportedPx { const TAG: Tag = 861; type Value = f64; }
+impl Field for ReportedPx { const TAG: Tag = 861; type Value = crate::Amount; }
 
 /// NoCapacities (862).
 pub struct NoCapacities;
@@ -5517,7 +5517,7 @@ impl Field for NoCapacities { const TAG: Tag = 862; type Value = i64; }
 
 /// OrderCapacityQty (863).
 pub struct OrderCapacityQty;
-impl Field for OrderCapacityQty { const TAG: Tag = 863; type Value = f64; }
+impl Field for OrderCapacityQty { const TAG: Tag = 863; type Value = crate::Amount; }
 
 /// NoEvents (864).
 pub struct NoEvents;
@@ -5540,7 +5540,7 @@ impl Field for EventDate { const TAG: Tag = 866; type Value = crate::FixDate; }
 
 /// EventPx (867).
 pub struct EventPx;
-impl Field for EventPx { const TAG: Tag = 867; type Value = f64; }
+impl Field for EventPx { const TAG: Tag = 867; type Value = crate::Amount; }
 
 /// EventText (868).
 pub struct EventText;
@@ -5548,7 +5548,7 @@ impl Field for EventText { const TAG: Tag = 868; type Value = String; }
 
 /// PctAtRisk (869).
 pub struct PctAtRisk;
-impl Field for PctAtRisk { const TAG: Tag = 869; type Value = f64; }
+impl Field for PctAtRisk { const TAG: Tag = 869; type Value = crate::Amount; }
 
 /// NoInstrAttrib (870).
 pub struct NoInstrAttrib;
@@ -5618,7 +5618,7 @@ impl Field for UnderlyingCPRegType { const TAG: Tag = 878; type Value = String; 
 
 /// UnderlyingQty (879).
 pub struct UnderlyingQty;
-impl Field for UnderlyingQty { const TAG: Tag = 879; type Value = f64; }
+impl Field for UnderlyingQty { const TAG: Tag = 879; type Value = crate::Amount; }
 
 /// TrdMatchID (880).
 pub struct TrdMatchID;
@@ -5630,23 +5630,23 @@ impl Field for SecondaryTradeReportRefID { const TAG: Tag = 881; type Value = St
 
 /// UnderlyingDirtyPrice (882).
 pub struct UnderlyingDirtyPrice;
-impl Field for UnderlyingDirtyPrice { const TAG: Tag = 882; type Value = f64; }
+impl Field for UnderlyingDirtyPrice { const TAG: Tag = 882; type Value = crate::Amount; }
 
 /// UnderlyingEndPrice (883).
 pub struct UnderlyingEndPrice;
-impl Field for UnderlyingEndPrice { const TAG: Tag = 883; type Value = f64; }
+impl Field for UnderlyingEndPrice { const TAG: Tag = 883; type Value = crate::Amount; }
 
 /// UnderlyingStartValue (884).
 pub struct UnderlyingStartValue;
-impl Field for UnderlyingStartValue { const TAG: Tag = 884; type Value = f64; }
+impl Field for UnderlyingStartValue { const TAG: Tag = 884; type Value = crate::Amount; }
 
 /// UnderlyingCurrentValue (885).
 pub struct UnderlyingCurrentValue;
-impl Field for UnderlyingCurrentValue { const TAG: Tag = 885; type Value = f64; }
+impl Field for UnderlyingCurrentValue { const TAG: Tag = 885; type Value = crate::Amount; }
 
 /// UnderlyingEndValue (886).
 pub struct UnderlyingEndValue;
-impl Field for UnderlyingEndValue { const TAG: Tag = 886; type Value = f64; }
+impl Field for UnderlyingEndValue { const TAG: Tag = 886; type Value = crate::Amount; }
 
 /// NoUnderlyingStips (887).
 pub struct NoUnderlyingStips;
@@ -5662,7 +5662,7 @@ impl Field for UnderlyingStipValue { const TAG: Tag = 889; type Value = String; 
 
 /// MaturityNetMoney (890).
 pub struct MaturityNetMoney;
-impl Field for MaturityNetMoney { const TAG: Tag = 890; type Value = f64; }
+impl Field for MaturityNetMoney { const TAG: Tag = 890; type Value = crate::Amount; }
 
 /// MiscFeeBasis (891).
 pub struct MiscFeeBasis;
@@ -5719,19 +5719,19 @@ impl Field for NoTrades { const TAG: Tag = 897; type Value = i64; }
 
 /// MarginRatio (898).
 pub struct MarginRatio;
-impl Field for MarginRatio { const TAG: Tag = 898; type Value = f64; }
+impl Field for MarginRatio { const TAG: Tag = 898; type Value = crate::Amount; }
 
 /// MarginExcess (899).
 pub struct MarginExcess;
-impl Field for MarginExcess { const TAG: Tag = 899; type Value = f64; }
+impl Field for MarginExcess { const TAG: Tag = 899; type Value = crate::Amount; }
 
 /// TotalNetValue (900).
 pub struct TotalNetValue;
-impl Field for TotalNetValue { const TAG: Tag = 900; type Value = f64; }
+impl Field for TotalNetValue { const TAG: Tag = 900; type Value = crate::Amount; }
 
 /// CashOutstanding (901).
 pub struct CashOutstanding;
-impl Field for CashOutstanding { const TAG: Tag = 901; type Value = f64; }
+impl Field for CashOutstanding { const TAG: Tag = 901; type Value = crate::Amount; }
 
 /// CollAsgnID (902).
 pub struct CollAsgnID;
@@ -5842,15 +5842,15 @@ impl DeliveryType {
 
 /// EndAccruedInterestAmt (920).
 pub struct EndAccruedInterestAmt;
-impl Field for EndAccruedInterestAmt { const TAG: Tag = 920; type Value = f64; }
+impl Field for EndAccruedInterestAmt { const TAG: Tag = 920; type Value = crate::Amount; }
 
 /// StartCash (921).
 pub struct StartCash;
-impl Field for StartCash { const TAG: Tag = 921; type Value = f64; }
+impl Field for StartCash { const TAG: Tag = 921; type Value = crate::Amount; }
 
 /// EndCash (922).
 pub struct EndCash;
-impl Field for EndCash { const TAG: Tag = 922; type Value = f64; }
+impl Field for EndCash { const TAG: Tag = 922; type Value = crate::Amount; }
 
 /// UserRequestID (923).
 pub struct UserRequestID;

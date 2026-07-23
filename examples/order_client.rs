@@ -11,7 +11,7 @@ use quickfix_tokio::fix44::messages::new_order_single::NewOrderSingle;
 use quickfix_tokio::fix44::{AnyMessage, classify, fields};
 use quickfix_tokio::{
     Application, ApplicationError, Engine, MemoryStoreFactory, Message, SessionId, Settings,
-    TracingLogFactory, UtcTimestamp,
+    TracingLogFactory, UtcTimestamp, dec,
 };
 use tokio::sync::mpsc;
 
@@ -74,8 +74,8 @@ async fn main() -> quickfix_tokio::Result<()> {
         fields::OrdType::LIMIT,
     );
     order.set_symbol("TSLA");
-    order.set_order_qty(100.0);
-    order.set_price(101.25);
+    order.set_order_qty(dec!(100));
+    order.set_price(dec!(101.25));
     session.send(order.into()).await?;
     println!("order sent, waiting for fill...");
 
@@ -83,9 +83,9 @@ async fn main() -> quickfix_tokio::Result<()> {
         println!(
             "filled: {} {} x {} @ {} (status {})",
             fill.cl_ord_id().unwrap_or_default(),
-            fill.cum_qty().unwrap_or(0.0),
+            fill.cum_qty().unwrap_or(dec!(0)),
             fill.symbol().unwrap_or_default(),
-            fill.avg_px().unwrap_or(0.0),
+            fill.avg_px().unwrap_or(dec!(0)),
             fill.ord_status().map(|c| c.to_string()).unwrap_or_default(),
         );
     }

@@ -18,13 +18,15 @@ use quickfix_tokio::fix44::messages::execution_report::ExecutionReport;
 use quickfix_tokio::fix44::messages::new_order_single::NewOrderSingle;
 use quickfix_tokio::fix44::{classify, fields, AnyMessage};
 use quickfix_tokio::{
-    Application, ApplicationError, Engine, MemoryStoreFactory, Message, NullLogFactory,
-    RejectError, SessionId, Settings, UtcTimestamp,
+    Amount, Application, ApplicationError, Engine, MemoryStoreFactory, Message, NullLogFactory,
+    RejectError, SessionId, Settings, UtcTimestamp, dec,
 };
 use tokio::sync::mpsc;
 
 const PASSWORD: &str = "hunter2";
-const MAX_QTY: f64 = 1_000.0;
+fn max_qty() -> Amount {
+    dec!(1000)
+}
 
 // ----- server: authenticates logons, risk-checks orders -----
 
@@ -59,12 +61,13 @@ impl Application for RiskExecutor {
         let AnyMessage::NewOrderSingle(order) = classify(msg.clone()) else {
             return Err(ApplicationError::UnsupportedMessageType);
         };
-        let qty = order.order_qty().unwrap_or(0.0);
+        let qty = order.order_qty().unwrap_or(dec!(0));
         let cl_ord_id = order.cl_ord_id().unwrap_or_default();
-        if qty > MAX_QTY {
-            println!("[server] REJECT {cl_ord_id}: qty {qty} over limit {MAX_QTY}");
+        let limit = max_qty();
+        if qty > limit {
+            println!("[server] REJECT {cl_ord_id}: qty {qty} over limit {limit}");
             return Err(ApplicationError::Reject(RejectError::other(
-                format!("order qty {qty} exceeds limit {MAX_QTY}"),
+                format!("order qty {qty} exceeds limit {limit}"),
                 fields::OrderQty::TAG,
             )));
         }
@@ -75,9 +78,9 @@ impl Application for RiskExecutor {
             fields::ExecType::TRADE,
             fields::OrdStatus::FILLED,
             order.side().unwrap_or(fields::Side::BUY),
-            0.0,
+            dec!(0),
             qty,
-            100.0,
+            dec!(100),
         );
         er.set_cl_ord_id(cl_ord_id);
         er.set_transact_time(UtcTimestamp::now());
@@ -175,7 +178,8 @@ async fn main() -> quickfix_tokio::Result<()> {
     }
 
     // Four orders: two within the limit, two over it.
-    let orders = [("A-small", 100.0), ("B-big", 5_000.0), ("C-small", 250.0), ("D-big", 2_000.0)];
+    let orders =
+        [("A-small", dec!(100)), ("B-big", dec!(5000)), ("C-small", dec!(250)), ("D-big", dec!(2000))];
     for (id, qty) in orders {
         let mut order = NewOrderSingle::new(
             id,

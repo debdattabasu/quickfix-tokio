@@ -3,7 +3,14 @@
 #![cfg(feature = "fix44")]
 
 use quickfix_tokio::fix44::{self, AnyMessage, fields, messages};
-use quickfix_tokio::{Message, UtcTimestamp};
+use quickfix_tokio::{Amount, Message, UtcTimestamp};
+
+/// Build an `Amount` (Decimal or f64, per feature) from a decimal string, so
+/// these tests are agnostic to the `decimal` feature.
+fn amt(s: &str) -> Amount {
+    use quickfix_tokio::value::FixDecode;
+    Amount::decode(0, s.as_bytes()).unwrap()
+}
 
 #[test]
 fn typed_new_order_single_roundtrip() {
@@ -14,12 +21,12 @@ fn typed_new_order_single_roundtrip() {
         fields::OrdType::MARKET,
     );
     order.set_symbol("TSLA");
-    order.set_order_qty(100.0);
+    order.set_order_qty(amt("100"));
 
     assert_eq!(order.cl_ord_id().unwrap(), "ORDER-1");
     assert_eq!(order.side().unwrap(), '1');
     assert_eq!(order.symbol().unwrap(), "TSLA");
-    assert_eq!(order.order_qty().unwrap(), 100.0);
+    assert_eq!(order.order_qty().unwrap(), amt("100"));
     assert!(order.has_symbol());
     assert!(!order.has_account());
 
@@ -76,16 +83,16 @@ fn typed_execution_report() {
         fields::ExecType::TRADE,
         fields::OrdStatus::FILLED,
         fields::Side::BUY,
-        0.0,   // LeavesQty
-        100.0, // CumQty
-        100.5, // AvgPx
+        amt("0"),   // LeavesQty
+        amt("100"), // CumQty
+        amt("100.5"), // AvgPx
     );
     er.set_cl_ord_id("ORDER-1");
-    er.set_last_px(100.5);
+    er.set_last_px(amt("100.5"));
 
     assert_eq!(er.exec_type().unwrap(), 'F');
     assert_eq!(er.ord_status().unwrap(), '2');
-    assert_eq!(er.avg_px().unwrap(), 100.5);
+    assert_eq!(er.avg_px().unwrap(), amt("100.5"));
     assert_eq!(
         Message::from(er).msg_type().unwrap(),
         messages::execution_report::ExecutionReport::MSG_TYPE
@@ -117,11 +124,11 @@ fn constructor_sets_msg_type() {
 fn field_getter_setter() {
     use messages::execution_report::ExecutionReport;
     let mut er = ExecutionReport::new(
-        "O", "E", fields::ExecType::TRADE, fields::OrdStatus::FILLED, fields::Side::BUY, 0.0, 0.0,
-        0.0,
+        "O", "E", fields::ExecType::TRADE, fields::OrdStatus::FILLED, fields::Side::BUY, amt("0"),
+        amt("0"), amt("0"),
     );
-    er.set_avg_px(10.5);
-    assert_eq!(er.avg_px().unwrap(), 10.5);
+    er.set_avg_px(amt("10.5"));
+    assert_eq!(er.avg_px().unwrap(), amt("10.5"));
 }
 
 /// has_x() reflects presence, before and after setting (TcrIsSetTest).
@@ -136,9 +143,9 @@ fn is_set_semantics() {
     // An optional field is absent until set.
     assert!(!order.has_price());
     assert!(order.price().is_err());
-    order.set_price(99.5);
+    order.set_price(amt("99.5"));
     assert!(order.has_price());
-    assert_eq!(order.price().unwrap(), 99.5);
+    assert_eq!(order.price().unwrap(), amt("99.5"));
 }
 
 /// Every field type generated for FIX 4.4 round-trips through the wire with
@@ -154,9 +161,9 @@ fn field_types_roundtrip() {
         quickfix_tokio::TimestampPrecision::Millis,
     );
     let mut order = NewOrderSingle::new("ORD-T", fields::Side::SELL, ts, fields::OrdType::LIMIT);
-    order.set_order_qty(42.5); // f64 (QTY)
-    order.set_price(101.0); // f64 (PRICE)
-    order.set_max_floor(10.0); // f64
+    order.set_order_qty(amt("42.5")); // QTY
+    order.set_price(amt("101")); // PRICE
+    order.set_max_floor(amt("10"));
     order.set_symbol("MSFT"); // String
     order.set_account("ACC-9"); // String
 
@@ -166,8 +173,8 @@ fn field_types_roundtrip() {
     assert_eq!(order.cl_ord_id().unwrap(), "ORD-T"); // String
     assert_eq!(order.side().unwrap(), '2'); // char
     assert_eq!(order.ord_type().unwrap(), '2'); // char
-    assert_eq!(order.order_qty().unwrap(), 42.5); // f64
-    assert_eq!(order.price().unwrap(), 101.0);
+    assert_eq!(order.order_qty().unwrap(), amt("42.5"));
+    assert_eq!(order.price().unwrap(), amt("101"));
     assert_eq!(order.symbol().unwrap(), "MSFT");
     assert_eq!(order.account().unwrap(), "ACC-9");
     assert_eq!(order.transact_time().unwrap().time, ts.time); // UtcTimestamp
@@ -218,6 +225,32 @@ fn nested_group_in_group_roundtrip() {
     assert_eq!(nested[0].nested_party_id().unwrap(), "NP-A");
     assert_eq!(nested[0].nested_party_id_source().unwrap(), 'D');
     assert_eq!(nested[1].nested_party_id().unwrap(), "NP-B");
+}
+
+/// With the `decimal` feature, prices/quantities are exact through the full
+/// typed -> wire -> typed round trip, including precision and trailing-zero
+/// scale that f64 would corrupt.
+#[cfg(feature = "decimal")]
+#[test]
+fn decimal_price_exact_through_wire() {
+    use messages::new_order_single::NewOrderSingle;
+    use quickfix_tokio::dec;
+
+    let mut order =
+        NewOrderSingle::new("EXACT", fields::Side::BUY, UtcTimestamp::now(), fields::OrdType::LIMIT);
+    // A value f64 cannot represent exactly, plus a trailing-zero scale.
+    order.set_price(dec!(0.1) + dec!(0.2)); // exactly 0.3, not 0.30000000000000004
+    order.set_order_qty(dec!(1000.50)); // scale 2 preserved
+
+    let raw = Message::from(order).to_bytes();
+    // The wire bytes are exactly what we set.
+    let wire = String::from_utf8_lossy(&raw);
+    assert!(wire.contains("44=0.3\x01"), "price not exact on the wire: {wire}");
+    assert!(wire.contains("38=1000.50\x01"), "qty scale not preserved: {wire}");
+
+    let order = NewOrderSingle::from_message(Message::parse(&raw, false).unwrap()).unwrap();
+    assert_eq!(order.price().unwrap(), dec!(0.3));
+    assert_eq!(order.order_qty().unwrap(), dec!(1000.50));
 }
 
 /// Enum value constants carry their spec values (fields::*).

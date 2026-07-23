@@ -17,7 +17,7 @@ use quickfix_tokio::fix44::messages::market_data_snapshot_full_refresh::{
 use quickfix_tokio::fix44::{classify, fields, AnyMessage};
 use quickfix_tokio::{
     Application, ApplicationError, Engine, MemoryStoreFactory, Message, NullLogFactory, SessionId,
-    Settings,
+    Settings, dec,
 };
 use tokio::sync::mpsc;
 
@@ -62,8 +62,8 @@ impl Application for Publisher {
             snap.set_symbol(&symbol);
 
             let book = [
-                (fields::MDEntryType::BID, 100.25, 500.0),
-                (fields::MDEntryType::OFFER, 100.75, 300.0),
+                (fields::MDEntryType::BID, dec!(100.25), dec!(500)),
+                (fields::MDEntryType::OFFER, dec!(100.75), dec!(300)),
             ];
             let entries = book.iter().filter(|(t, _, _)| wants.contains(t)).map(|&(t, px, sz)| {
                 let mut e = NoMDEntries::new();

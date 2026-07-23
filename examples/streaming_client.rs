@@ -13,8 +13,8 @@ use quickfix_tokio::fix44::messages::execution_report::ExecutionReport;
 use quickfix_tokio::fix44::messages::new_order_single::NewOrderSingle;
 use quickfix_tokio::fix44::{classify, fields, AnyMessage};
 use quickfix_tokio::{
-    Application, ApplicationError, Engine, MemoryStoreFactory, Message, NullLogFactory, SessionId,
-    Settings, UtcTimestamp,
+    Application, ApplicationError, Decimal, Engine, MemoryStoreFactory, Message, NullLogFactory,
+    SessionId, Settings, UtcTimestamp, dec,
 };
 use tokio::sync::mpsc;
 
@@ -33,16 +33,16 @@ impl Application for Executor {
             return Err(ApplicationError::UnsupportedMessageType);
         };
         let cl_ord_id = order.cl_ord_id().unwrap_or_default();
-        let qty = order.order_qty().unwrap_or(0.0);
+        let qty = order.order_qty().unwrap_or(dec!(0));
         let mut er = ExecutionReport::new(
             format!("EXEC-{cl_ord_id}"),
             format!("X-{cl_ord_id}"),
             fields::ExecType::TRADE,
             fields::OrdStatus::FILLED,
             order.side().unwrap_or(fields::Side::BUY),
-            0.0,
+            dec!(0),
             qty,
-            100.0,
+            dec!(100),
         );
         er.set_cl_ord_id(cl_ord_id);
         er.set_last_qty(qty);
@@ -134,7 +134,7 @@ async fn main() -> quickfix_tokio::Result<()> {
             fields::OrdType::MARKET,
         );
         order.set_symbol("TSLA");
-        order.set_order_qty((i as f64 + 1.0) * 10.0);
+        order.set_order_qty(Decimal::from(i as i64 + 1) * dec!(10));
         session.send(order.into()).await?;
     }
 

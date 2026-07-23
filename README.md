@@ -125,10 +125,14 @@ match classify(msg.clone()) {
 
 Constructors take the message's required fields; every field gets
 `x()`/`set_x()`/`has_x()` accessors typed per the dictionary (ints as `i64`,
-prices/quantities as `f64`, timestamps as `UtcTimestamp`, enums as
-constants like `fields::Side::BUY`). Repeating groups are structs with the
-same accessor pattern (`order.set_no_party_ids([...])`). Message structs
-`Deref` to [`Message`](src/message.rs) for anything not covered.
+prices/quantities/amounts as `Amount`, timestamps as `UtcTimestamp`, enums
+as constants like `fields::Side::BUY`). `Amount` is exact fixed-point
+[`rust_decimal::Decimal`](https://docs.rs/rust_decimal) by default (the
+`decimal` feature) — so `dec!(0.1) + dec!(0.2)` is exactly `0.3` and a wire
+value like `1000.50` round-trips with its scale intact — or `f64` with the
+feature off. Repeating groups are structs with the same accessor pattern
+(`order.set_no_party_ids([...])`). Message structs `Deref` to
+[`Message`](src/message.rs) for anything not covered.
 
 The generator is part of the crate: `cargo run --bin generate-fix --
 spec/FIX42.xml src/fix42` regenerates or targets another FIX version.
@@ -236,13 +240,13 @@ right after a queue replay).
   sequence numbers reset on the daily/weekly boundary, logons are gated to
   the window, and the session logs out when it closes — C++ `TimeRange`
   semantics including overnight and weekly windows
+- Exact fixed-point decimal price/qty/amount fields via `rust_decimal`
+  (`decimal` feature, on by default; `f64` without it)
 - FIX 4.0–4.4 and FIXT.1.1, ephemeral + persistent sessions
 
 ## Not yet implemented
 
 - Per-message fsync durability, SQL/Mongo stores
-- Decimal price/qty types (typed accessors use `f64`; use the raw
-  `FieldMap` string accessors where exact decimals matter)
 
 ## Tests
 

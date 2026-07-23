@@ -98,6 +98,31 @@ impl FixDecode for f64 {
     }
 }
 
+/// Exact fixed-point decimal for FIX float-family fields. Preserves the wire
+/// scale (so `"1.50"` round-trips as `"1.50"`, not `"1.5"`).
+#[cfg(feature = "decimal")]
+impl FixEncode for rust_decimal::Decimal {
+    fn encode(&self, buf: &mut Vec<u8>) {
+        // rust_decimal's Display is always plain decimal (never exponent).
+        use std::fmt::Write;
+        let mut s = String::new();
+        let _ = write!(s, "{self}");
+        buf.extend_from_slice(s.as_bytes());
+    }
+}
+
+#[cfg(feature = "decimal")]
+impl FixDecode for rust_decimal::Decimal {
+    fn decode(tag: Tag, bytes: &[u8]) -> Result<Self, ConversionError> {
+        let s = std::str::from_utf8(bytes).map_err(|_| invalid(tag, bytes))?;
+        // Same wire rules as f64: no '+', no exponents.
+        if s.bytes().any(|b| !matches!(b, b'0'..=b'9' | b'.' | b'-')) {
+            return Err(invalid(tag, bytes));
+        }
+        s.parse::<rust_decimal::Decimal>().map_err(|_| invalid(tag, bytes))
+    }
+}
+
 impl FixDecode for String {
     fn decode(tag: Tag, bytes: &[u8]) -> Result<Self, ConversionError> {
         String::from_utf8(bytes.to_vec()).map_err(|_| invalid(tag, bytes))
@@ -225,6 +250,29 @@ mod tests {
         assert!(bool::decode(1, b"X").is_err());
         assert!(f64::decode(1, b"1e5").is_err());
         assert_eq!(f64::decode(1, b"-1.25").unwrap(), -1.25);
+    }
+
+    #[cfg(feature = "decimal")]
+    #[test]
+    fn decimal_exactness_and_scale() {
+        use rust_decimal::Decimal;
+        // Exact arithmetic: 0.1 + 0.2 == 0.3 (f64 would give 0.30000000000000004).
+        let a: Decimal = "0.1".parse().unwrap();
+        let b: Decimal = "0.2".parse().unwrap();
+        assert_eq!(a + b, "0.3".parse::<Decimal>().unwrap());
+
+        // Wire scale is preserved on round-trip.
+        let d = Decimal::decode(44, b"1.50").unwrap();
+        assert_eq!(enc(d), b"1.50");
+        // High-precision value survives (>15 significant digits).
+        let d = Decimal::decode(44, b"123456789.012345678").unwrap();
+        assert_eq!(enc(d), b"123456789.012345678");
+        // Plain integer and negative.
+        assert_eq!(enc(Decimal::decode(38, b"100").unwrap()), b"100");
+        assert_eq!(enc(Decimal::decode(44, b"-1.25").unwrap()), b"-1.25");
+        // Invalid wire formats rejected.
+        assert!(Decimal::decode(44, b"1e5").is_err());
+        assert!(Decimal::decode(44, b"+1.5").is_err());
     }
 
     #[test]

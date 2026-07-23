@@ -15,7 +15,7 @@ use quickfix_tokio::fix44::messages::new_order_single::NewOrderSingle;
 use quickfix_tokio::fix44::{AnyMessage, classify, fields};
 use quickfix_tokio::{
     Application, ApplicationError, Engine, MemoryStoreFactory, Message, SessionId, Settings,
-    TracingLogFactory, UtcTimestamp,
+    TracingLogFactory, UtcTimestamp, dec,
 };
 use tokio::sync::mpsc;
 
@@ -47,17 +47,17 @@ impl Application for Executor {
 }
 
 fn fill_for(order: &NewOrderSingle, exec_seq: u64) -> ExecutionReport {
-    let qty = order.order_qty().unwrap_or(0.0);
-    let price = order.price().unwrap_or(100.0); // market orders "fill" at 100
+    let qty = order.order_qty().unwrap_or(dec!(0));
+    let price = order.price().unwrap_or(dec!(100)); // market orders "fill" at 100
     let mut er = ExecutionReport::new(
         format!("ORD-{exec_seq}"),
         format!("EXEC-{exec_seq}"),
         fields::ExecType::TRADE,
         fields::OrdStatus::FILLED,
         order.side().unwrap_or(fields::Side::BUY),
-        0.0,   // LeavesQty
-        qty,   // CumQty
-        price, // AvgPx
+        dec!(0), // LeavesQty
+        qty,     // CumQty
+        price,   // AvgPx
     );
     if let Ok(cl_ord_id) = order.cl_ord_id() {
         er.set_cl_ord_id(cl_ord_id);
@@ -101,7 +101,7 @@ async fn main() -> quickfix_tokio::Result<()> {
         let n = exec_count.fetch_add(1, Ordering::Relaxed) + 1;
         println!(
             "filling {} x {} for {}",
-            order.order_qty().unwrap_or(0.0),
+            order.order_qty().unwrap_or(dec!(0)),
             order.symbol().unwrap_or_default(),
             order.cl_ord_id().unwrap_or_default(),
         );
