@@ -1,0 +1,22 @@
+[package]
+name = "quickfix-tokio"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "A pure-Rust FIX protocol engine built natively on tokio"
+license = "MIT OR Apache-2.0"
+keywords = ["fix", "quickfix", "trading", "protocol", "tokio"]
+categories = ["network-programming", "asynchronous", "finance"]
+
+[dependencies]
+tokio = { version = "1", features = ["net", "io-util", "time", "sync", "rt", "macros", "fs"] }
+bytes = "1"
+thiserror = "2"
+async-trait = "0.1"
+quick-xml = "0.37"
+chrono = { version = "0.4", features = ["clock", "std"], default-features = false }
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+tracing-subscriber = "0.3"
