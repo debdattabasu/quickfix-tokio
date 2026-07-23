@@ -83,8 +83,9 @@ impl FixEncode for f64 {
 impl FixDecode for f64 {
     fn decode(tag: Tag, bytes: &[u8]) -> Result<Self, ConversionError> {
         let s = std::str::from_utf8(bytes).map_err(|_| invalid(tag, bytes))?;
-        // Reject exponent/infinity notation which is invalid on the FIX wire.
-        if s.bytes().any(|b| !matches!(b, b'0'..=b'9' | b'.' | b'+' | b'-')) {
+        // Only digits, '.', and a leading '-' are valid on the FIX wire
+        // (no '+', no exponents) — matches the C++ DoubleConvertor.
+        if s.bytes().any(|b| !matches!(b, b'0'..=b'9' | b'.' | b'-')) {
             return Err(invalid(tag, bytes));
         }
         s.parse::<f64>().map_err(|_| invalid(tag, bytes))

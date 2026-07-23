@@ -199,6 +199,9 @@ impl DataDictionary {
             },
             ..Default::default()
         };
+        // Pre-FIX.4.2 dictionaries type most fields as CHAR meaning "string";
+        // single-character CHAR semantics only exist from 4.2 on.
+        let char_is_string = !fixt && dd.begin_string.as_str() < "FIX.4.2";
 
         // Pass 1: field definitions (name -> tag/type/enums).
         let fields = child(&fix, "fields");
@@ -210,8 +213,11 @@ impl DataDictionary {
                     .and_then(|n| n.parse().ok())
                     .ok_or_else(|| Error::Dictionary("field without number".into()))?;
                 let name = f.attrs.get("name").cloned().unwrap_or_default();
-                let field_type =
+                let mut field_type =
                     FieldType::from_name(f.attrs.get("type").map(|s| s.as_str()).unwrap_or(""));
+                if char_is_string && field_type == FieldType::Char {
+                    field_type = FieldType::String;
+                }
                 let values = f
                     .children
                     .iter()
@@ -388,6 +394,32 @@ impl DataDictionary {
         Ok(())
     }
 
+    /// Reorder a message body into the canonical form the reference engines
+    /// produce: top-level fields ascending by tag, with each repeating-group
+    /// block kept intact (in received/insertion order) under its counter tag.
+    pub fn canonicalize_body(&self, msg: &mut Message) {
+        let Ok(mt) = msg.msg_type() else { return };
+        let Some(def) = self.messages.get(&mt) else { return };
+        let fields = msg.body.take_fields();
+
+        let mut segments: Vec<(Tag, Vec<crate::field_map::TagValue>)> = Vec::new();
+        let mut i = 0;
+        while i < fields.len() {
+            let tag = fields[i].tag;
+            let mut seg = vec![fields[i].clone()];
+            i += 1;
+            if let Some(group) = def.groups.get(&tag) {
+                while i < fields.len() && group.tags.contains(&fields[i].tag) {
+                    seg.push(fields[i].clone());
+                    i += 1;
+                }
+            }
+            segments.push((tag, seg));
+        }
+        segments.sort_by_key(|s| s.0);
+        msg.body.set_fields(segments.into_iter().flat_map(|(_, seg)| seg).collect());
+    }
+
     /// A ready-made [`GroupTemplate`] for reading a repeating group of this
     /// message type (top-level groups only).
     pub fn group_template(&self, msg_type: &str, counter: Tag) -> Option<GroupTemplate> {
@@ -410,10 +442,19 @@ impl DataDictionary {
             .header
             .get_string(tags::MSG_TYPE)
             .map_err(|_| RejectError::with_tag(SessionRejectReason::RequiredTagMissing, tags::MSG_TYPE))?;
-        let def = self
-            .messages
-            .get(&msg_type)
-            .ok_or_else(|| RejectError::new(SessionRejectReason::InvalidMsgType))?;
+        // XMLnonFIX (35=n) is accepted without a message definition,
+        // matching QuickFIX/n.
+        if msg_type == "n" {
+            return Ok(());
+        }
+        let def = self.messages.get(&msg_type).ok_or_else(|| {
+            // Only FIX.4.2 cites RefTagID=35 on an invalid MsgType.
+            if self.begin_string == "FIX.4.2" {
+                RejectError::with_tag(SessionRejectReason::InvalidMsgType, tags::MSG_TYPE)
+            } else {
+                RejectError::new(SessionRejectReason::InvalidMsgType)
+            }
+        })?;
 
         if settings.check_fields_out_of_order {
             if let Some(tag) = msg.structure_error() {
@@ -421,6 +462,28 @@ impl DataDictionary {
                     SessionRejectReason::TagSpecifiedOutOfRequiredOrder,
                     tag,
                 ));
+            }
+        }
+
+        // A repeating group's first entry must begin with its delimiter.
+        // Groups are checked in wire order so the first violation wins.
+        let body_fields: Vec<_> = msg.body.iter().collect();
+        for (i, f) in body_fields.iter().enumerate() {
+            let Some(group) = def.groups.get(&f.tag) else { continue };
+            let declared: u64 = msg.body.get_opt(group.counter).ok().flatten().unwrap_or(0);
+            if declared == 0 {
+                continue;
+            }
+            if let Some(first) = body_fields.get(i + 1) {
+                if group.tags.contains(&first.tag) && first.tag != group.delimiter {
+                    return Err(RejectError::other(
+                        format!(
+                            "Group {}'s first entry does not start with delimiter {}",
+                            group.counter, group.delimiter
+                        ),
+                        group.counter,
+                    ));
+                }
             }
         }
 
@@ -438,6 +501,21 @@ impl DataDictionary {
         for &tag in &def.required {
             if !msg.body.contains(tag) {
                 return Err(RejectError::with_tag(SessionRejectReason::RequiredTagMissing, tag));
+            }
+        }
+
+        // Duplicate tags: only repeating-group members may repeat.
+        let mut group_member_tags: HashSet<Tag> = HashSet::new();
+        for g in def.groups.values() {
+            group_member_tags.extend(g.tags.iter().copied());
+        }
+        let mut seen: HashSet<Tag> = HashSet::new();
+        for f in msg.body.iter() {
+            if !group_member_tags.contains(&f.tag) && !seen.insert(f.tag) {
+                return Err(RejectError::with_tag(
+                    SessionRejectReason::TagAppearsMoreThanOnce,
+                    f.tag,
+                ));
             }
         }
 
@@ -492,7 +570,10 @@ impl DataDictionary {
             ));
         }
         let Some(field) = self.fields_by_tag.get(&tag) else {
-            if settings.allow_unknown_message_fields || tag >= USER_DEFINED_TAG_MIN {
+            // User-defined tags were already skipped above when
+            // ValidateUserDefinedFields=N; here an unknown tag is an error
+            // unless unknown fields are allowed outright.
+            if settings.allow_unknown_message_fields {
                 return Ok(());
             }
             return Err(RejectError::with_tag(SessionRejectReason::InvalidTagNumber, tag));
@@ -507,6 +588,11 @@ impl DataDictionary {
                 tag,
             ));
         }
+        // Format before enum membership: a malformed value is "incorrect
+        // data format" (373=6), not "value out of range" (373=5).
+        self.check_format(field, value).map_err(|_| {
+            RejectError::with_tag(SessionRejectReason::IncorrectDataFormatForValue, tag)
+        })?;
         if !field.values.is_empty() {
             let v = String::from_utf8_lossy(value);
             // MultipleValue fields carry space-separated entries.
@@ -515,8 +601,7 @@ impl DataDictionary {
                 return Err(RejectError::with_tag(SessionRejectReason::ValueIsIncorrect, tag));
             }
         }
-        self.check_format(field, value)
-            .map_err(|_| RejectError::with_tag(SessionRejectReason::IncorrectDataFormatForValue, tag))
+        Ok(())
     }
 
     fn check_format(&self, field: &FieldDef, value: &[u8]) -> std::result::Result<(), ()> {

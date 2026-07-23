@@ -107,6 +107,28 @@ loop), `transport` (acceptor/initiator/socket tasks), `engine` (wiring),
 `store` (memory + file persistence), `log`, `settings`,
 `datadictionary` (XML specs + validation).
 
+## Acceptance suite
+
+The engine passes the **classic QuickFIX acceptance test suite** — 297
+protocol-conformance scripts across FIX 4.0/4.1/4.2/4.3/4.4, the same `.def`
+scripts the reference engines certify with (vendored from QuickFIX/n into
+`acceptance/definitions/`). The runner ([tests/acceptance.rs](tests/acceptance.rs))
+is a Rust port of QuickFIX/n's Runner/ReflectorClient: it drives a raw TCP
+client (or several) against a live engine, with `<TIME±n>` decoration,
+automatic BodyLength/CheckSum insertion, and byte-for-byte positional
+matching of every engine response. Run with `cargo test --test acceptance`.
+
+Conformance details this suite locked in: canonical field ordering (header
+8,9,35 then ascending; bodies ascending with repeating-group blocks intact),
+version-specific reject shapes (pre-4.2 puts the offending tag in Text(58),
+4.2 caps SessionRejectReason at 11, only 4.2 cites RefTagID on invalid
+MsgType), reverse routing (115/116/144 ↔ 128/129/145) on rejects, CHAR→STRING
+degradation for pre-4.2 dictionaries, C++-style tolerant framing (a lying
+BodyLength still frames, then fails validation and is ignored as garbled),
+silent disconnect on a bad-SendingTime logon, XMLnonFIX (35=n) as an admin
+type, and the QuickFIX/n issue-309 rule (obey a too-low SequenceReset-GapFill
+right after a queue replay).
+
 ## What works today
 
 - Logon negotiation incl. ResetSeqNumFlag(141), acceptor HeartBtInt adoption,
@@ -131,8 +153,8 @@ loop), `transport` (acceptor/initiator/socket tasks), `engine` (wiring),
 - TLS, per-message fsync durability, SQL/Mongo stores
 - Typed message/field codegen from the XML specs (the `spec/` files and the
   dictionary parser are the input for it)
-- The QuickFIX acceptance-test runner (`.def` scripts) — the format is
-  documented in `reference/quickfixn/AcceptanceTest`
+- FIX 5.0 / FIXT.1.1 acceptance coverage (needs the transport/app dictionary
+  split); the FIX 4.x suite is fully green
 
 ## Tests
 

@@ -194,7 +194,7 @@ impl RawClient {
 
     /// Build and send a message with the standard header, at an explicit
     /// sequence number.
-    async fn send_at(&mut self, seq: u64, msg_type: &str, fields: &[(u32, &str)]) {
+    async fn send_at(&mut self, seq: u64, msg_type: &str, fields: &[(i32, &str)]) {
         let mut m = Message::with_type(msg_type);
         m.header.set(tags::BEGIN_STRING, "FIX.4.4");
         m.header.set(tags::SENDER_COMP_ID, "CLIENT");
@@ -211,7 +211,7 @@ impl RawClient {
         self.stream.write_all(&m.to_bytes()).await.unwrap();
     }
 
-    async fn send(&mut self, msg_type: &str, fields: &[(u32, &str)]) {
+    async fn send(&mut self, msg_type: &str, fields: &[(i32, &str)]) {
         self.seq += 1;
         self.send_at(self.seq, msg_type, fields).await;
     }

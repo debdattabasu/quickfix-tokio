@@ -105,6 +105,14 @@ impl FieldMap {
         self.fields.push(tv);
     }
 
+    pub(crate) fn take_fields(&mut self) -> Vec<TagValue> {
+        std::mem::take(&mut self.fields)
+    }
+
+    pub(crate) fn set_fields(&mut self, fields: Vec<TagValue>) {
+        self.fields = fields;
+    }
+
     /// Total serialized size of these fields: `tag=value<SOH>` for each.
     pub fn wire_len(&self) -> usize {
         self.fields
@@ -213,8 +221,8 @@ pub(crate) fn write_tag_value(buf: &mut Vec<u8>, tag: Tag, value: &[u8]) {
     buf.push(crate::message::SOH);
 }
 
-fn dec_len(mut v: u32) -> usize {
-    let mut n = 1;
+fn dec_len(v: crate::message::Tag) -> usize {
+    let (mut v, mut n) = if v < 0 { (-(v as i64), 2usize) } else { (v as i64, 1) };
     while v >= 10 {
         v /= 10;
         n += 1;

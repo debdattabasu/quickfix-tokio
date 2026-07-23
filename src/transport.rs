@@ -121,6 +121,25 @@ async fn identify_and_attach(
         format!("no session configured for {}:{}->{}", key.0, key.1, key.2)
     })?;
 
+    // If the session still counts a previous (possibly just-closed)
+    // connection as attached, give it a moment to notice the teardown —
+    // mirrors the reference acceptors' wait-for-session-free behavior.
+    // A genuinely still-active session keeps the slot and this connection
+    // is dropped (duplicate identity).
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        match handle.status().await {
+            Ok(s) if s.connected => {
+                if tokio::time::Instant::now() >= deadline {
+                    return Err("session already has an active connection".into());
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            Ok(_) => break,
+            Err(_) => return Err("session task not running".into()),
+        }
+    }
+
     let (in_rx, out_tx) = spawn_io_tasks(stream, buf);
     // Deliver the already-read first message through a small relay so the
     // session sees it before the socket's subsequent frames.

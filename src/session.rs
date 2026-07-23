@@ -136,6 +136,10 @@ pub(crate) struct Session {
     /// Raw messages received with too-high seqnums, replayed once the gap
     /// fills.
     stash: BTreeMap<u64, Bytes>,
+    /// Whether the most recently processed inbound message was replayed
+    /// from the stash — a too-low SequenceReset-GapFill right after a
+    /// stash replay is obeyed anyway (QuickFIX/n issue #309).
+    last_processed_was_queued: bool,
 }
 
 impl Session {
@@ -170,6 +174,7 @@ impl Session {
             test_request_counter: 0,
             resend_range: None,
             stash: BTreeMap::new(),
+            last_processed_was_queued: false,
         };
         tokio::spawn(session.run());
         handle
@@ -320,6 +325,12 @@ impl Session {
         let since_sent = now.duration_since(self.last_sent);
         let since_recv = now.duration_since(self.last_received);
 
+        // A pending logout times out regardless of logon state (we may have
+        // sent Logout in response to a rejected logon attempt).
+        if self.sent_logout && since_sent >= self.cfg.logout_timeout {
+            self.disconnect("Timed out waiting for logout response").await;
+            return;
+        }
         if !self.received_logon {
             // Awaiting logon: initiators time out; acceptors give the peer
             // LogonTimeout to identify themselves.
@@ -330,10 +341,6 @@ impl Session {
         }
         let hbi = self.heart_bt_int;
         if hbi.is_zero() {
-            return;
-        }
-        if self.sent_logout && since_sent >= self.cfg.logout_timeout {
-            self.disconnect("Timed out waiting for logout response").await;
             return;
         }
         if since_sent < hbi && since_recv < hbi {
@@ -380,6 +387,9 @@ impl Session {
 
     /// The normal send path: assign seqnum, run callbacks, persist, transmit.
     async fn send_message(&mut self, mut msg: Message) -> Result<()> {
+        // A fresh send is never a possible duplicate (C++ Session::send).
+        msg.header.remove(tags::POSS_DUP_FLAG);
+        msg.header.remove(tags::ORIG_SENDING_TIME);
         self.fill_header(&mut msg);
         let is_admin = msg.is_admin();
         let mt = msg.msg_type().unwrap_or_default();
@@ -387,6 +397,9 @@ impl Session {
             self.app.to_admin(&mut msg, &self.cfg.session_id).await;
         } else if self.app.to_app(&mut msg, &self.cfg.session_id).await.is_err() {
             return Err(Error::DoNotSend);
+        }
+        if let Some(dd) = &self.dictionary {
+            dd.canonicalize_body(&mut msg);
         }
         let seq = msg.seq_num()?;
         let raw = msg.to_bytes();
@@ -453,8 +466,9 @@ impl Session {
         let mut logon = Message::with_type(msg_type::LOGON);
         logon.set(tags::ENCRYPT_METHOD, 0);
         logon.set(tags::HEART_BT_INT, self.heart_bt_int.as_secs());
+        // The reply does not echo ResetSeqNumFlag(141) — matches QuickFIX/n
+        // (verified by the SessionReset acceptance test).
         if self.received_reset {
-            logon.set(tags::RESET_SEQ_NUM_FLAG, true);
             self.sent_reset = true;
         }
         if let Some(v) = &self.cfg.default_appl_ver_id {
@@ -477,47 +491,74 @@ impl Session {
         self.send_message(logout).await
     }
 
-    /// Session-level Reject (35=3). Consumes the offending seqnum.
+    /// Session-level Reject (35=3). Consumes the offending seqnum only when
+    /// the offender was in sequence and is not a Logon or SequenceReset
+    /// (C++ `generateReject`).
     async fn send_reject(&mut self, offender: &Message, rej: &RejectError) -> Result<()> {
-        self.store.incr_next_target_seq_num().await?;
+        let mt = offender.msg_type().unwrap_or_default();
+        if mt != msg_type::LOGON
+            && mt != msg_type::SEQUENCE_RESET
+            && offender.seq_num().ok() == Some(self.store.next_target_seq_num())
+        {
+            self.store.incr_next_target_seq_num().await?;
+        }
         let fix42_plus = self.cfg.session_id.begin_string.as_str() >= "FIX.4.2"
             || self.cfg.session_id.is_fixt();
+        // Body fields in ascending tag order (canonical form).
         let mut reject = Message::with_type(msg_type::REJECT);
+        reverse_route(offender, &mut reject, &self.cfg.session_id.begin_string);
         if let Ok(seq) = offender.seq_num() {
             reject.set(tags::REF_SEQ_NUM, seq);
         }
+        // Pre-4.2 has no RefTagID(371): the offending tag rides in Text(58)
+        // as "reason (tag)" instead.
+        let text = match rej.ref_tag {
+            Some(tag) if !fix42_plus && rej.text.is_none() => format!("{rej} ({tag})"),
+            _ => rej.to_string(),
+        };
+        reject.set(tags::TEXT, text.as_str());
         if fix42_plus {
-            reject.set(tags::SESSION_REJECT_REASON, rej.reason.code());
             if let Some(tag) = rej.ref_tag {
                 reject.set(tags::REF_TAG_ID, tag);
             }
             if let Ok(mt) = offender.msg_type() {
                 reject.set(tags::REF_MSG_TYPE, mt.as_str());
             }
+            // FIX.4.2's SessionRejectReason enum stops at 11; higher codes
+            // exist only from FIX.4.3 on and are omitted before that.
+            let code = rej.reason.code();
+            if code <= 11 || self.cfg.session_id.begin_string.as_str() > "FIX.4.2" {
+                reject.set(tags::SESSION_REJECT_REASON, code);
+            }
         }
-        reject.set(tags::TEXT, rej.to_string().as_str());
         self.event(&format!("Message rejected: {rej}"));
         self.send_message(reject).await
     }
 
-    async fn send_business_reject(&mut self, offender: &Message, text: &str) -> Result<()> {
+    async fn send_business_reject(&mut self, offender: &Message) -> Result<()> {
         self.store.incr_next_target_seq_num().await?;
         let fix42_plus = self.cfg.session_id.begin_string.as_str() >= "FIX.4.2"
             || self.cfg.session_id.is_fixt();
-        let mut reject = if fix42_plus {
-            let mut m = Message::with_type(msg_type::BUSINESS_MESSAGE_REJECT);
-            m.set(tags::BUSINESS_REJECT_REASON, 3u32); // unsupported message type
-            if let Ok(mt) = offender.msg_type() {
-                m.set(tags::REF_MSG_TYPE, mt.as_str());
-            }
-            m
+        // Body fields in ascending tag order (canonical form). The casing
+        // difference is QuickFIX/n-faithful: BusinessMessageReject says
+        // "Unsupported Message Type", the pre-4.2 Reject fallback says
+        // "Unsupported message type".
+        let (mut reject, text) = if fix42_plus {
+            (Message::with_type(msg_type::BUSINESS_MESSAGE_REJECT), "Unsupported Message Type")
         } else {
-            Message::with_type(msg_type::REJECT)
+            (Message::with_type(msg_type::REJECT), "Unsupported message type")
         };
+        reverse_route(offender, &mut reject, &self.cfg.session_id.begin_string);
         if let Ok(seq) = offender.seq_num() {
             reject.set(tags::REF_SEQ_NUM, seq);
         }
         reject.set(tags::TEXT, text);
+        if fix42_plus {
+            if let Ok(mt) = offender.msg_type() {
+                reject.set(tags::REF_MSG_TYPE, mt.as_str());
+            }
+            reject.set(tags::BUSINESS_REJECT_REASON, 3u32); // unsupported message type
+        }
         self.send_message(reject).await
     }
 
@@ -542,8 +583,8 @@ impl Session {
         m.header.set(tags::POSS_DUP_FLAG, true);
         let now = UtcTimestamp::new(chrono::Utc::now(), self.cfg.timestamp_precision);
         m.header.set(tags::ORIG_SENDING_TIME, now);
-        m.set(tags::GAP_FILL_FLAG, true);
         m.set(tags::NEW_SEQ_NO, new_seq);
+        m.set(tags::GAP_FILL_FLAG, true);
         self.app.to_admin(&mut m, &self.cfg.session_id).await;
         self.event(&format!("Sent SequenceReset (GapFill) {begin} -> {new_seq}"));
         let raw = m.to_bytes();
@@ -570,6 +611,7 @@ impl Session {
             self.disconnect(&reason).await;
             return;
         }
+        self.last_processed_was_queued = false;
         if let Err(Disconnect(reason)) = self.drain_stash().await {
             self.disconnect(&reason).await;
         }
@@ -588,19 +630,23 @@ impl Session {
         if msg.header.get_raw(tags::BEGIN_STRING)
             != Some(self.cfg.session_id.begin_string.as_bytes())
         {
+            let got = msg
+                .header
+                .get_raw(tags::BEGIN_STRING)
+                .map(|v| String::from_utf8_lossy(v).into_owned())
+                .unwrap_or_default();
             let _ = self.store.incr_next_target_seq_num().await;
-            let _ = self.initiate_logout("Incorrect BeginString").await;
+            let _ = self.initiate_logout(&format!("Incorrect BeginString ({got})")).await;
             return Err(Disconnect("incorrect BeginString".into()));
         }
 
-        // Dictionary validation of application messages, before dispatch
-        // (mirrors the C++ engine's ordering). Failures consume the seqnum.
-        if !msg.is_admin() {
-            if let Some(dd) = self.dictionary.clone() {
-                if let Err(rej) = dd.validate(&msg, &self.cfg.validation) {
-                    let _ = self.send_reject(&msg, &rej).await;
-                    return Ok(());
-                }
+        // Dictionary validation of all messages, admin included, before
+        // dispatch (mirrors the C++ engine's ordering). Failures consume
+        // the seqnum.
+        if let Some(dd) = self.dictionary.clone() {
+            if let Err(rej) = dd.validate(&msg, &self.cfg.validation) {
+                let _ = self.send_reject(&msg, &rej).await;
+                return Ok(());
             }
         }
 
@@ -645,7 +691,7 @@ impl Session {
                                 ),
                             )
                             .await;
-                        let _ = self.initiate_logout("SendingTime accuracy problem").await;
+                        let _ = self.initiate_logout("").await;
                         return Ok(Flow::Stop);
                     }
                 }
@@ -674,7 +720,7 @@ impl Session {
                 let _ = self
                     .send_reject(msg, &RejectError::new(SessionRejectReason::CompIDProblem))
                     .await;
-                let _ = self.initiate_logout("CompID problem").await;
+                let _ = self.initiate_logout("").await;
                 return Ok(Flow::Stop);
             }
         }
@@ -699,7 +745,18 @@ impl Session {
                 return Ok(Flow::Stop);
             }
             if check_too_low && seq < expected {
-                return self.on_target_too_low(msg, seq, expected).await;
+                // A too-low SequenceReset-GapFill straight after a stash
+                // replay is obeyed anyway (QuickFIX/n issue #309).
+                let obey_anyway = self.last_processed_was_queued
+                    && mt == msg_type::SEQUENCE_RESET
+                    && msg.body.get_raw(tags::GAP_FILL_FLAG) == Some(b"Y");
+                if obey_anyway {
+                    self.event(&format!(
+                        "SequenceReset-GapFill {seq} is too low (expected {expected}), obeying it anyway"
+                    ));
+                } else {
+                    return self.on_target_too_low(msg, seq, expected).await;
+                }
             }
             // An in-range message may satisfy an outstanding resend request.
             if let Some((_, end)) = self.resend_range {
@@ -731,7 +788,7 @@ impl Session {
                 Ok(Flow::Stop)
             }
             Err(ApplicationError::UnsupportedMessageType) => {
-                let _ = self.send_business_reject(msg, "Unsupported Message Type").await;
+                let _ = self.send_business_reject(msg).await;
                 Ok(Flow::Stop)
             }
         }
@@ -790,7 +847,7 @@ impl Session {
                                     ),
                                 )
                                 .await;
-                            let _ = self.initiate_logout("SendingTime accuracy problem").await;
+                            let _ = self.initiate_logout("").await;
                             return Ok(Flow::Stop);
                         }
                     }
@@ -816,6 +873,22 @@ impl Session {
     // ----- handlers -----
 
     async fn handle_logon(&mut self, msg: &Message) -> std::result::Result<(), Disconnect> {
+        // A logon with a bad SendingTime is dropped with a silent disconnect
+        // (no Reject/Logout), per the reference engines.
+        if self.cfg.check_latency {
+            let good = msg
+                .header
+                .get_opt::<UtcTimestamp>(tags::SENDING_TIME)
+                .ok()
+                .flatten()
+                .is_some_and(|st| {
+                    (chrono::Utc::now() - st.time).abs().num_seconds().unsigned_abs()
+                        <= self.cfg.max_latency.as_secs()
+                });
+            if !good {
+                return Err(Disconnect("logon has bad sending time".into()));
+            }
+        }
         // ResetSeqNumFlag(141)=Y from the peer.
         if msg.body.get_raw(tags::RESET_SEQ_NUM_FLAG) == Some(b"Y") {
             self.received_reset = true;
@@ -986,7 +1059,7 @@ impl Session {
                     .map_err(|e| Disconnect(format!("store error: {e}")))?;
                 // Anything stashed below the new seqnum is superseded.
                 self.stash.retain(|&k, _| k >= new_seq);
-            } else if new_seq < expected && gap_fill {
+            } else if new_seq < expected {
                 let _ = self
                     .send_reject(msg, &RejectError::new(SessionRejectReason::ValueIsIncorrect))
                     .await;
@@ -1036,6 +1109,7 @@ impl Session {
             let expected = self.store.next_target_seq_num();
             let Some(raw) = self.stash.remove(&expected) else { return Ok(()) };
             self.event(&format!("Processing queued message: {expected}"));
+            self.last_processed_was_queued = true;
             // Queued Logon/ResendRequest only advance the seqnum
             // (mirrors C++ nextQueued).
             if contains_field(&raw, b"35=A") || contains_field(&raw, b"35=2") {
@@ -1059,6 +1133,34 @@ async fn recv_opt(rx: &mut Option<mpsc::Receiver<Bytes>>) -> Option<Bytes> {
 
 fn mul(d: Duration, f: f64) -> Duration {
     Duration::from_secs_f64(d.as_secs_f64() * f)
+}
+
+/// Copy routing fields from a received message into a reply, reversed:
+/// OnBehalfOf(115/116/144) becomes DeliverTo(128/129/145) and vice versa.
+/// Empty values are not propagated.
+fn reverse_route(offender: &Message, reply: &mut Message, begin_string: &str) {
+    const PAIRS: [(crate::message::Tag, crate::message::Tag); 6] = [
+        (tags::ON_BEHALF_OF_COMP_ID, tags::DELIVER_TO_COMP_ID),
+        (tags::ON_BEHALF_OF_SUB_ID, tags::DELIVER_TO_SUB_ID),
+        (tags::ON_BEHALF_OF_LOCATION_ID, tags::DELIVER_TO_LOCATION_ID),
+        (tags::DELIVER_TO_COMP_ID, tags::ON_BEHALF_OF_COMP_ID),
+        (tags::DELIVER_TO_SUB_ID, tags::ON_BEHALF_OF_SUB_ID),
+        (tags::DELIVER_TO_LOCATION_ID, tags::ON_BEHALF_OF_LOCATION_ID),
+    ];
+    // Location IDs (144/145) only exist from FIX 4.1 on.
+    let has_location_ids = begin_string >= "FIX.4.1";
+    for (src, dst) in PAIRS {
+        if !has_location_ids
+            && matches!(src, tags::ON_BEHALF_OF_LOCATION_ID | tags::DELIVER_TO_LOCATION_ID)
+        {
+            continue;
+        }
+        if let Some(v) = offender.header.get_raw(src) {
+            if !v.is_empty() {
+                reply.header.set_raw(dst, v.to_vec());
+            }
+        }
+    }
 }
 
 /// Whether `raw` contains `<SOH>field` (or starts with `field`).

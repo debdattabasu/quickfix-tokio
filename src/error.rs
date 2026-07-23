@@ -79,11 +79,16 @@ impl SessionRejectReason {
 }
 
 /// A message failed validation and should be answered with a session-level Reject (35=3).
+///
+/// Displays as the bare reason text (the offending tag goes in RefTagID(371),
+/// not in Text(58), matching the reference engines).
 #[derive(Debug, Clone, thiserror::Error)]
-#[error("{}{}", .reason.text(), .ref_tag.map(|t| format!(" (tag {t})")).unwrap_or_default())]
+#[error("{}", .text.as_deref().unwrap_or(self.reason.text()))]
 pub struct RejectError {
     pub reason: SessionRejectReason,
     pub ref_tag: Option<Tag>,
+    /// Overrides the standard reason text in Text(58) when set.
+    pub text: Option<String>,
     /// True when the offending message should NOT increment NextTargetMsgSeqNum
     /// (e.g. garbled messages per the spec are ignored, not rejected).
     pub is_garbled: bool,
@@ -91,10 +96,19 @@ pub struct RejectError {
 
 impl RejectError {
     pub fn new(reason: SessionRejectReason) -> Self {
-        Self { reason, ref_tag: None, is_garbled: false }
+        Self { reason, ref_tag: None, text: None, is_garbled: false }
     }
     pub fn with_tag(reason: SessionRejectReason, tag: Tag) -> Self {
-        Self { reason, ref_tag: Some(tag), is_garbled: false }
+        Self { reason, ref_tag: Some(tag), text: None, is_garbled: false }
+    }
+    /// SessionRejectReason "Other" (99) with a custom Text(58).
+    pub fn other(text: impl Into<String>, ref_tag: Tag) -> Self {
+        Self {
+            reason: SessionRejectReason::Other,
+            ref_tag: Some(ref_tag),
+            text: Some(text.into()),
+            is_garbled: false,
+        }
     }
 }
 

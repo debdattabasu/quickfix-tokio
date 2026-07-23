@@ -1,0 +1,19 @@
+# If group has a required field, do not treat the whole component as required.
+
+iCONNECT
+# logon message and response
+I8=FIX.4.435=A34=149=TW52=<TIME>56=ISLD98=0108=2
+E8=FIX.4.49=6035=A34=149=ISLD52=00000000-00:00:00.00056=TW98=0108=210=0
+
+
+I8=FIX.4.435=AD34=249=TW52=<TIME>56=ISLD568=tradereqid569=0
+
+# Do a TestRequest to get a response that ensures the above was not rejected
+I8=FIX.4.435=134=349=TW52=<TIME>56=ISLD112=TEST
+E8=FIX.4.435=034=249=ISLD52=00000000-00:00:00.00056=TW112=TEST
+
+
+# logout message and response
+I8=FIX.4.435=534=449=TW52=<TIME>56=ISLD
+E8=FIX.4.49=4935=534=349=ISLD52=00000000-00:00:00.00056=TW10=0
+

@@ -66,26 +66,22 @@ pub fn extract_frame(buf: &mut BytesMut) -> Frame {
         };
         let body_start = len_start + rel_soh2 + 1;
 
-        // The body ends where "10=" begins; expect "10=xyz<SOH>".
-        let checksum_start = body_start + body_len;
-        // 3 for "10=", at least 1 digit, 1 SOH -> look for the SOH.
-        if buf.len() < checksum_start + 4 {
+        // The body nominally ends where "10=" begins. Like the C++ parser,
+        // search *forward* from there for "<SOH>10=" — a lying BodyLength
+        // still yields a frame, and Message::parse then fails its
+        // length/checksum validation so the session ignores it as garbled.
+        let search_from = (body_start + body_len).saturating_sub(1);
+        if search_from >= buf.len() {
             return Frame::Incomplete;
         }
-        if &buf[checksum_start..checksum_start + 3] != b"10=" {
-            // BodyLength lied; treat frame as garbled and resync.
-            buf.advance(2);
-            continue;
-        }
-        let Some(rel_end) = buf[checksum_start + 3..].iter().position(|&b| b == SOH) else {
-            // Bounded field: if no SOH within a few bytes it's garbled.
-            if buf.len() > checksum_start + 3 + 8 {
-                buf.advance(2);
-                continue;
-            }
+        let Some(rel_cs) = find(&buf[search_from..], b"\x0110=") else {
             return Frame::Incomplete;
         };
-        let end = checksum_start + 3 + rel_end + 1;
+        let after_cs_tag = search_from + rel_cs + 4;
+        let Some(rel_end) = buf[after_cs_tag..].iter().position(|&b| b == SOH) else {
+            return Frame::Incomplete;
+        };
+        let end = after_cs_tag + rel_end + 1;
         return Frame::Message(buf.split_to(end).freeze());
     }
 }
@@ -135,18 +131,25 @@ mod tests {
     }
 
     #[test]
-    fn skips_garbled_frame_and_recovers() {
-        // A frame whose BodyLength points somewhere that is not "10=".
-        // (A BodyLength pointing past the buffered bytes is indistinguishable
-        // from an incomplete message and correctly returns Incomplete.)
+    fn frames_message_with_lying_body_length() {
+        // A wrong BodyLength still frames (forward search for 10=); the
+        // session detects the mismatch during parse and ignores the message.
+        // This mirrors the C++ Parser and is required by acceptance test 2m.
         let garbled = b"8=FIX.4.2\x019=3\x0135=D\x0158=hi\x0110=000\x01";
         let raw = msg();
         let mut buf = BytesMut::new();
         buf.extend_from_slice(garbled);
         buf.extend_from_slice(&raw);
         match extract_frame(&mut buf) {
+            Frame::Message(m) => {
+                assert_eq!(&m[..], &garbled[..]);
+                assert!(crate::message::Message::parse(&m, true).is_err());
+            }
+            _ => panic!("expected the garbled frame"),
+        }
+        match extract_frame(&mut buf) {
             Frame::Message(m) => assert_eq!(&m[..], &raw[..]),
-            _ => panic!("expected recovery after garbled frame"),
+            _ => panic!("expected the valid frame after the garbled one"),
         }
     }
 

@@ -71,8 +71,10 @@ pub mod msg_type {
     pub const LOGON: &str = "A";
     pub const BUSINESS_MESSAGE_REJECT: &str = "j";
 
+    /// "n" (XMLnonFIX) counts as admin like in QuickFIX/n, so it reaches
+    /// `from_admin` and skips message-definition validation.
     pub fn is_admin(msg_type: &str) -> bool {
-        matches!(msg_type, "0" | "1" | "2" | "3" | "4" | "5" | "A")
+        matches!(msg_type, "0" | "1" | "2" | "3" | "4" | "5" | "A" | "n")
     }
 }
 

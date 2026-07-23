@@ -6,7 +6,10 @@ use crate::field_map::{FieldMap, TagValue, write_tag_value};
 use crate::tags;
 use crate::value::{FixEncode, UtcTimestamp};
 
-pub type Tag = u32;
+/// Signed, like the reference engines' `int` tags: a negative wire tag
+/// (e.g. `-1=x`) must parse so it can be *rejected* as an invalid tag
+/// number rather than garbling the whole message.
+pub type Tag = i32;
 pub const SOH: u8 = 0x01;
 
 #[derive(Debug, Clone, Default)]
@@ -40,7 +43,7 @@ impl Message {
     pub fn is_admin(&self) -> bool {
         self.header
             .get_raw(tags::MSG_TYPE)
-            .map(|t| matches!(t, b"0" | b"1" | b"2" | b"3" | b"4" | b"5" | b"A"))
+            .map(|t| matches!(t, b"0" | b"1" | b"2" | b"3" | b"4" | b"5" | b"A" | b"n"))
             .unwrap_or(false)
     }
 
@@ -138,12 +141,18 @@ impl Message {
             }
             field_index += 1;
 
+            // Fields are routed to their section by tag class even when out
+            // of position (like the C++ engine); the violation is recorded
+            // in structure_error for the dictionary's out-of-order check.
             let tv = TagValue { tag, value };
             if tag == tags::CHECK_SUM {
                 checksum_field_start = Some(field_start);
                 section = 2;
                 msg.trailer.push_tag_value(tv);
-            } else if section == 0 && tags::is_header_tag(tag) {
+            } else if tags::is_header_tag(tag) {
+                if section != 0 {
+                    msg.structure_error.get_or_insert(tag);
+                }
                 msg.header.push_tag_value(tv);
             } else if tags::is_trailer_tag(tag) {
                 section = 2;
@@ -153,11 +162,8 @@ impl Message {
                     section = 1;
                     body_start = Some(field_start);
                 } else if section == 2 {
-                    // Body/header field after the trailer began.
+                    // Body field after the trailer began.
                     msg.structure_error.get_or_insert(tag);
-                }
-                if section == 1 && msg.structure_error.is_none() && tags::is_header_tag(tag) {
-                    msg.structure_error = Some(tag);
                 }
                 if body_start.is_none() {
                     body_start = Some(field_start);
@@ -201,25 +207,33 @@ impl Message {
 
     /// Serialize, computing BodyLength(9) and CheckSum(10).
     ///
-    /// Header order: 8, 9, 35, then remaining header fields in insertion
-    /// order. Trailer: SignatureLength/Signature, then CheckSum last.
+    /// Header order matches the reference engines: 8, 9, 35, then remaining
+    /// header fields in ascending tag order. Body keeps insertion (wire)
+    /// order. Trailer: descending tag order (SignatureLength before
+    /// Signature), CheckSum last.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut inner = Vec::with_capacity(self.header.wire_len() + self.body.wire_len() + 64);
 
-        // 35 first among the remaining header fields, then the rest in order.
+        // 35 first among the remaining header fields, then ascending.
         if let Some(v) = self.header.get_raw(tags::MSG_TYPE) {
             write_tag_value(&mut inner, tags::MSG_TYPE, v);
         }
-        for f in self.header.fields() {
-            if !matches!(f.tag, tags::BEGIN_STRING | tags::BODY_LENGTH | tags::MSG_TYPE) {
-                write_tag_value(&mut inner, f.tag, &f.value);
-            }
+        let mut header: Vec<_> = self
+            .header
+            .fields()
+            .iter()
+            .filter(|f| !matches!(f.tag, tags::BEGIN_STRING | tags::BODY_LENGTH | tags::MSG_TYPE))
+            .collect();
+        header.sort_by_key(|f| f.tag);
+        for f in header {
+            write_tag_value(&mut inner, f.tag, &f.value);
         }
         self.body.write_to(&mut inner);
-        for f in self.trailer.fields() {
-            if f.tag != tags::CHECK_SUM {
-                write_tag_value(&mut inner, f.tag, &f.value);
-            }
+        let mut trailer: Vec<_> =
+            self.trailer.fields().iter().filter(|f| f.tag != tags::CHECK_SUM).collect();
+        trailer.sort_by_key(|f| std::cmp::Reverse(f.tag));
+        for f in trailer {
+            write_tag_value(&mut inner, f.tag, &f.value);
         }
 
         let begin_string = self.header.get_raw(tags::BEGIN_STRING).unwrap_or(b"FIX.4.4");
