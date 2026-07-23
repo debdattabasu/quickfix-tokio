@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use crate::datadictionary::ValidationSettings;
 use crate::error::{Error, Result};
+use crate::schedule::Schedule;
 use crate::session_id::SessionId;
 use crate::value::TimestampPrecision;
 
@@ -169,6 +170,13 @@ pub struct SessionConfig {
     pub send_next_expected_msg_seq_num: bool,
     /// TLS transport settings (go-style `Socket*` keys). See [`TlsSettings`].
     pub tls: TlsSettings,
+    /// When the session is active and resets (`StartTime`/`EndTime`,
+    /// `StartDay`/`EndDay`, `NonStopSession`, `UseLocalTime`). Non-stop by
+    /// default (no times configured).
+    pub schedule: Schedule,
+    /// When logons are accepted (`LogonTime`/`LogoutTime`,
+    /// `LogonDay`/`LogoutDay`); defaults to the session schedule.
+    pub logon_schedule: Schedule,
     pub file_store_path: Option<String>,
     pub file_log_path: Option<String>,
     /// FIXT.1.1 sessions: DefaultApplVerID(1137) for our Logon.
@@ -225,6 +233,31 @@ impl SessionConfig {
                     "ConnectionType must be initiator or acceptor, got {other:?}"
                 )));
             }
+        };
+
+        // Session schedule; logon schedule defaults to it.
+        let use_local = get_bool(m, "UseLocalTime", false)?;
+        let non_stop = get_bool(m, "NonStopSession", false)?;
+        let str_opt = |k: &str| m.get(k).map(|s| s.as_str());
+        let schedule = Schedule::parse(
+            str_opt("StartTime"),
+            str_opt("EndTime"),
+            str_opt("StartDay"),
+            str_opt("EndDay"),
+            use_local,
+            non_stop,
+        )?;
+        let logon_schedule = if m.contains_key("LogonTime") || m.contains_key("LogoutTime") {
+            Schedule::parse(
+                str_opt("LogonTime"),
+                str_opt("LogoutTime"),
+                str_opt("LogonDay").or(str_opt("StartDay")),
+                str_opt("LogoutDay").or(str_opt("EndDay")),
+                use_local,
+                non_stop,
+            )?
+        } else {
+            schedule.clone()
         };
 
         let heart_bt_int = match connection_type {
@@ -334,6 +367,8 @@ impl SessionConfig {
                 insecure_skip_verify: get_bool(m, "SocketInsecureSkipVerify", false)?,
                 server_name: m.get("SocketServerName").cloned(),
             },
+            schedule,
+            logon_schedule,
             validation: ValidationSettings {
                 check_fields_out_of_order: get_bool(m, "ValidateFieldsOutOfOrder", true)?,
                 check_fields_have_values: get_bool(m, "ValidateFieldsHaveValues", true)?,

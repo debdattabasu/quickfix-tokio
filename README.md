@@ -64,6 +64,9 @@ SocketConnectHost=127.0.0.1
 SocketConnectPort=9876
 HeartBtInt=30
 DataDictionary=spec/FIX44.xml
+# Schedule (optional): active 08:00–17:00 UTC, resets daily at the boundary
+# StartTime=08:00:00
+# EndTime=17:00:00
 # TLS (optional): verify the server against a pinned CA
 # SocketUseSSL=Y
 # SocketCAFile=ca.pem
@@ -228,12 +231,15 @@ right after a queue replay).
 - TLS via rustls (`SocketUseSSL=Y`; `tls` cargo feature, on by default):
   acceptor certs, initiator server verification against `SocketCAFile` or
   `SocketInsecureSkipVerify=Y`, mutual TLS with a client cert
+- Session schedules (`StartTime`/`EndTime`, weekly `StartDay`/`EndDay`,
+  `NonStopSession`, `UseLocalTime`, separate `LogonTime`/`LogoutTime`):
+  sequence numbers reset on the daily/weekly boundary, logons are gated to
+  the window, and the session logs out when it closes — C++ `TimeRange`
+  semantics including overnight and weekly windows
 - FIX 4.0–4.4 and FIXT.1.1, ephemeral + persistent sessions
 
 ## Not yet implemented
 
-- Session schedules (`StartTime`/`EndTime`, weekly windows) — sessions are
-  non-stop; connect/disconnect is driven by the engine lifecycle
 - Per-message fsync durability, SQL/Mongo stores
 - Decimal price/qty types (typed accessors use `f64`; use the raw
   `FieldMap` string accessors where exact decimals matter)

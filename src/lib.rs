@@ -35,6 +35,7 @@ pub mod field_map;
 pub mod log;
 pub mod message;
 pub mod parser;
+pub mod schedule;
 pub mod session;
 pub mod session_id;
 pub mod settings;

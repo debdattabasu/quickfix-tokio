@@ -178,6 +178,12 @@ pub(crate) struct Session {
     last_processed_was_queued: bool,
     /// Negotiate recovery via NextExpectedMsgSeqNum(789) on logon.
     send_next_expected: bool,
+    /// When the session is active/resets, and when logons are allowed.
+    schedule: crate::schedule::Schedule,
+    logon_schedule: crate::schedule::Schedule,
+    /// Initiator connected but the logon window was closed; send the logon
+    /// once it opens.
+    pending_logon: bool,
 }
 
 impl Session {
@@ -193,6 +199,8 @@ impl Session {
         let handle = SessionHandle { id: cfg.session_id.clone(), cmd_tx };
         let heart_bt_int = cfg.heart_bt_int;
         let send_next_expected = cfg.send_next_expected_msg_seq_num;
+        let schedule = cfg.schedule.clone();
+        let logon_schedule = cfg.logon_schedule.clone();
         let session = Session {
             cfg,
             store,
@@ -218,6 +226,9 @@ impl Session {
             stash: BTreeMap::new(),
             last_processed_was_queued: false,
             send_next_expected,
+            schedule,
+            logon_schedule,
+            pending_logon: false,
         };
         tokio::spawn(session.run());
         handle
@@ -337,8 +348,15 @@ impl Session {
             if self.cfg.refresh_on_logon {
                 let _ = self.store.refresh().await;
             }
-            if let Err(Disconnect(reason)) = self.send_logon().await {
-                self.disconnect(&reason).await;
+            // Only log on inside the logon window; otherwise defer to the
+            // timer, which sends it once the window opens.
+            if self.logon_schedule.is_in_range(chrono::Utc::now()) {
+                if let Err(Disconnect(reason)) = self.send_logon().await {
+                    self.disconnect(&reason).await;
+                }
+            } else {
+                self.pending_logon = true;
+                self.event("Connected outside logon time; deferring logon");
             }
         }
     }
@@ -371,6 +389,58 @@ impl Session {
     // ----- timers (predicates from QuickFIX C++ SessionState) -----
 
     async fn on_timer(&mut self) {
+        // Schedule handling runs even while disconnected (so re-entering the
+        // window can reset sequence numbers before the next connection).
+        if !self.schedule.is_non_stop() {
+            let utc_now = chrono::Utc::now();
+            if !self.schedule.is_in_range(utc_now) {
+                // Outside session time: don't operate. Log out and drop any
+                // connection; the reset happens when we re-enter the window.
+                if self.is_connected() {
+                    if self.is_logged_on() && !self.sent_logout {
+                        let _ = self.initiate_logout("").await;
+                    }
+                    self.disconnect("Outside session time").await;
+                }
+                return;
+            }
+            // In session time. If this instant belongs to a *different*
+            // occurrence than the store's creation time, a new session has
+            // begun — reset sequence numbers (and restamp creation time).
+            if !self.schedule.is_in_same_range(utc_now, self.store.creation_time()) {
+                self.event("New session instance; resetting sequence numbers");
+                if self.is_connected() {
+                    if self.is_logged_on() && !self.sent_logout {
+                        let _ = self.initiate_logout("").await;
+                    }
+                    self.disconnect("Session time boundary crossed").await;
+                }
+                let _ = self.store.reset().await;
+                return;
+            }
+            // Still in session time but the logon window closed: log out.
+            if self.is_connected()
+                && self.is_logged_on()
+                && !self.sent_logout
+                && !self.logon_schedule.is_in_range(utc_now)
+            {
+                self.event("Logon time expired, initiating logout");
+                let _ = self.initiate_logout("").await;
+            }
+            // Initiator: send a deferred logon once the window opens.
+            if self.pending_logon
+                && self.is_connected()
+                && !self.sent_logon
+                && self.logon_schedule.is_in_range(utc_now)
+            {
+                self.pending_logon = false;
+                if let Err(Disconnect(reason)) = self.send_logon().await {
+                    self.disconnect(&reason).await;
+                    return;
+                }
+            }
+        }
+
         if !self.is_connected() {
             return;
         }
