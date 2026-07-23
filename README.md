@@ -66,7 +66,25 @@ HeartBtInt=30
 DataDictionary=spec/FIX44.xml
 ```
 
-Try it: `cargo run --example executor` then `cargo run --example order_client`.
+### Examples
+
+Two-process (run the executor first, then the client in another terminal):
+
+- `executor` / `order_client` — a sell-side acceptor that fills a
+  NewOrderSingle, and a buy-side initiator that sends one and prints the fill.
+
+Self-contained (both sides in one process, just `cargo run --example <name>`):
+
+- `market_data` — typed **repeating groups**: a subscriber sends a
+  MarketDataRequest (symbol + wanted entry types as groups); a publisher
+  answers with a snapshot carrying a NoMDEntries group.
+- `auth_and_risk` — a tour of the `Application` **callback surface**:
+  `to_admin` stamps Username/Password onto the outgoing Logon, `from_admin`
+  checks them (and can veto with `RejectLogon`), and `from_app` enforces a
+  risk limit, rejecting oversized orders with a session-level `Reject`.
+- `streaming_client` — fires ten orders without waiting on each, then
+  reconciles the ExecutionReports as they stream back, matching fills to
+  orders by ClOrdID.
 
 ## Typed messages
 
