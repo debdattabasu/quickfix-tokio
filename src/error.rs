@@ -135,6 +135,8 @@ pub enum Error {
     NotLoggedOn(String),
     #[error("configuration error: {0}")]
     Config(String),
+    #[error("TLS error: {0}")]
+    Tls(String),
     #[error("data dictionary error: {0}")]
     Dictionary(String),
     #[error("store error: {0}")]

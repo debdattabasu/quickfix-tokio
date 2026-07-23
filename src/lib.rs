@@ -40,6 +40,8 @@ pub mod session_id;
 pub mod settings;
 pub mod store;
 pub mod tags;
+#[cfg(feature = "tls")]
+mod tls;
 mod transport;
 pub mod value;
 
@@ -52,7 +54,7 @@ pub use log::{FileLogFactory, Log, LogFactory, NullLogFactory, TracingLogFactory
 pub use message::{Message, Tag};
 pub use session::{SessionHandle, SessionStatus};
 pub use session_id::SessionId;
-pub use settings::{ConnectionType, SessionConfig, Settings};
+pub use settings::{ConnectionType, SessionConfig, Settings, TlsSettings};
 pub use store::{
     FileStoreFactory, MemoryStoreFactory, MessageStore, MessageStoreFactory,
 };

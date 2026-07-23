@@ -13,9 +13,9 @@ use crate::error::{Error, Result};
 use crate::log::LogFactory;
 use crate::session::{Command, Session, SessionHandle};
 use crate::session_id::SessionId;
-use crate::settings::{ConnectionType, Settings};
+use crate::settings::{ConnectionType, Settings, TlsSettings};
 use crate::store::MessageStoreFactory;
-use crate::transport::{self, SessionKey};
+use crate::transport::{self, SessionKey, Tls};
 
 pub struct Engine {
     handles: HashMap<SessionKey, SessionHandle>,
@@ -42,8 +42,10 @@ impl Engine {
 
         let mut handles = HashMap::new();
         let mut io_tasks = Vec::new();
-        let mut acceptors_by_port: HashMap<u16, HashMap<SessionKey, SessionHandle>> =
-            HashMap::new();
+        let mut acceptors_by_port: HashMap<
+            u16,
+            (HashMap<SessionKey, SessionHandle>, TlsSettings),
+        > = HashMap::new();
         let mut dictionaries: HashMap<String, Arc<DataDictionary>> = HashMap::new();
 
         for cfg in configs {
@@ -101,6 +103,7 @@ impl Engine {
             let (host, port, reconnect) =
                 (cfg.socket_connect_host.clone(), cfg.socket_connect_port, cfg.reconnect_interval);
             let accept_port = cfg.socket_accept_port;
+            let tls_settings = cfg.tls.clone();
 
             let handle =
                 Session::spawn(cfg, store, log, app.clone(), dictionary, admin_dictionary);
@@ -108,19 +111,27 @@ impl Engine {
 
             match connection_type {
                 ConnectionType::Initiator => {
+                    let tls = client_tls(&tls_settings, &host)?;
                     io_tasks.push(tokio::spawn(transport::run_initiator(
-                        host, port, reconnect, handle,
+                        host, port, reconnect, handle, tls,
                     )));
                 }
                 ConnectionType::Acceptor => {
-                    acceptors_by_port.entry(accept_port).or_default().insert(key, handle);
+                    // Sessions sharing an acceptor port share one TLS config
+                    // (TLS is negotiated before the session is identified).
+                    let entry = acceptors_by_port
+                        .entry(accept_port)
+                        .or_insert_with(|| (HashMap::new(), tls_settings.clone()));
+                    entry.0.insert(key, handle);
                 }
             }
         }
 
-        for (port, registry) in acceptors_by_port {
+        for (port, (registry, tls_settings)) in acceptors_by_port {
+            let tls = server_tls(&tls_settings)?;
             let listener = tokio::net::TcpListener::bind(("0.0.0.0", port)).await?;
-            io_tasks.push(tokio::spawn(transport::run_acceptor(listener, Arc::new(registry))));
+            io_tasks
+                .push(tokio::spawn(transport::run_acceptor(listener, Arc::new(registry), tls)));
         }
 
         Ok(Engine { handles, io_tasks })
@@ -155,4 +166,29 @@ impl Engine {
             }
         }
     }
+}
+
+/// Build initiator-side TLS from a session's settings.
+fn client_tls(tls: &TlsSettings, host: &str) -> Result<Tls> {
+    if !tls.enabled {
+        return Ok(Tls::None);
+    }
+    #[cfg(feature = "tls")]
+    return Ok(Tls::Client(crate::tls::build_connector(tls, host)?));
+    #[cfg(not(feature = "tls"))]
+    {
+        let _ = host;
+        Err(Error::Config("SocketUseSSL=Y requires the 'tls' feature".into()))
+    }
+}
+
+/// Build acceptor-side TLS from a session's settings.
+fn server_tls(tls: &TlsSettings) -> Result<Tls> {
+    if !tls.enabled {
+        return Ok(Tls::None);
+    }
+    #[cfg(feature = "tls")]
+    return Ok(Tls::Server(crate::tls::build_acceptor(tls)?));
+    #[cfg(not(feature = "tls"))]
+    Err(Error::Config("SocketUseSSL=Y requires the 'tls' feature".into()))
 }

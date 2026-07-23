@@ -64,7 +64,15 @@ SocketConnectHost=127.0.0.1
 SocketConnectPort=9876
 HeartBtInt=30
 DataDictionary=spec/FIX44.xml
+# TLS (optional): verify the server against a pinned CA
+# SocketUseSSL=Y
+# SocketCAFile=ca.pem
+# SocketServerName=exec.example.com
 ```
+
+For a TLS acceptor set `SocketUseSSL=Y` with `SocketCertificateFile` and
+`SocketPrivateKeyFile`; add `SocketCAFile` to require and verify client
+certificates (mutual TLS).
 
 ### Examples
 
@@ -217,13 +225,16 @@ right after a queue replay).
 - `NextExpectedMsgSeqNum(789)` logon-handshake recovery
   (`SendNextExpectedMsgSeqNum=Y`, default off, C++ semantics) — folds gap
   recovery into logon; required by some venues (e.g. CME)
+- TLS via rustls (`SocketUseSSL=Y`; `tls` cargo feature, on by default):
+  acceptor certs, initiator server verification against `SocketCAFile` or
+  `SocketInsecureSkipVerify=Y`, mutual TLS with a client cert
 - FIX 4.0–4.4 and FIXT.1.1, ephemeral + persistent sessions
 
 ## Not yet implemented
 
 - Session schedules (`StartTime`/`EndTime`, weekly windows) — sessions are
   non-stop; connect/disconnect is driven by the engine lifecycle
-- TLS, per-message fsync durability, SQL/Mongo stores
+- Per-message fsync durability, SQL/Mongo stores
 - Decimal price/qty types (typed accessors use `f64`; use the raw
   `FieldMap` string accessors where exact decimals matter)
 

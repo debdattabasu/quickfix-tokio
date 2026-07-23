@@ -97,6 +97,29 @@ pub enum ConnectionType {
     Acceptor,
 }
 
+/// TLS transport configuration (go-style `Socket*` keys).
+#[derive(Debug, Clone, Default)]
+pub struct TlsSettings {
+    /// `SocketUseSSL=Y` — wrap the connection in TLS.
+    pub enabled: bool,
+    /// `SocketCertificateFile` — PEM certificate chain. Required for an
+    /// acceptor; supplies the client certificate for mutual TLS on an
+    /// initiator.
+    pub certificate_file: Option<String>,
+    /// `SocketPrivateKeyFile` — PEM private key paired with the certificate.
+    pub private_key_file: Option<String>,
+    /// `SocketCAFile` — PEM trust anchors. An initiator verifies the server
+    /// against these (falling back to the webpki roots when absent); an
+    /// acceptor requires and verifies client certificates against them
+    /// (mutual TLS).
+    pub ca_file: Option<String>,
+    /// `SocketInsecureSkipVerify=Y` — initiator skips server certificate
+    /// verification. Testing/self-signed only.
+    pub insecure_skip_verify: bool,
+    /// `SocketServerName` — SNI / verification hostname for an initiator.
+    pub server_name: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct SessionConfig {
     pub session_id: SessionId,
@@ -144,6 +167,8 @@ pub struct SessionConfig {
     /// Logon handshake (C++ `SendNextExpectedMsgSeqNum`, go
     /// `EnableNextExpectedMsgSeqNum`). Default off, like both references.
     pub send_next_expected_msg_seq_num: bool,
+    /// TLS transport settings (go-style `Socket*` keys). See [`TlsSettings`].
+    pub tls: TlsSettings,
     pub file_store_path: Option<String>,
     pub file_log_path: Option<String>,
     /// FIXT.1.1 sessions: DefaultApplVerID(1137) for our Logon.
@@ -301,6 +326,14 @@ impl SessionConfig {
             requires_orig_sending_time: get_bool(m, "RequiresOrigSendingTime", true)?,
             send_next_expected_msg_seq_num: get_bool(m, "SendNextExpectedMsgSeqNum", false)?
                 || get_bool(m, "EnableNextExpectedMsgSeqNum", false)?,
+            tls: TlsSettings {
+                enabled: get_bool(m, "SocketUseSSL", false)?,
+                certificate_file: m.get("SocketCertificateFile").cloned(),
+                private_key_file: m.get("SocketPrivateKeyFile").cloned(),
+                ca_file: m.get("SocketCAFile").cloned(),
+                insecure_skip_verify: get_bool(m, "SocketInsecureSkipVerify", false)?,
+                server_name: m.get("SocketServerName").cloned(),
+            },
             validation: ValidationSettings {
                 check_fields_out_of_order: get_bool(m, "ValidateFieldsOutOfOrder", true)?,
                 check_fields_have_values: get_bool(m, "ValidateFieldsHaveValues", true)?,

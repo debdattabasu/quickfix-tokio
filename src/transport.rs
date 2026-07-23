@@ -1,15 +1,17 @@
 //! Socket plumbing: per-connection read/write tasks, the acceptor's
 //! listener (which identifies sessions from the first inbound message), and
 //! the initiator's dial/reconnect loop.
+//!
+//! Read/write tasks are generic over any `AsyncRead`/`AsyncWrite`, so plain
+//! TCP and TLS streams flow through the same code path.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf, split};
 use tokio::net::TcpStream;
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::message::Message;
@@ -21,11 +23,24 @@ use crate::tags;
 /// (BeginString, our CompID, their CompID).
 pub(crate) type SessionKey = (String, String, String);
 
-pub(crate) fn spawn_io_tasks(
-    stream: TcpStream,
+/// TLS configuration passed to the transport. Without the `tls` feature only
+/// `None` exists, so plain-TCP builds carry no TLS code.
+pub(crate) enum Tls {
+    None,
+    #[cfg(feature = "tls")]
+    Server(tokio_rustls::TlsAcceptor),
+    #[cfg(feature = "tls")]
+    Client(crate::tls::ClientTls),
+}
+
+pub(crate) fn spawn_io_tasks<S>(
+    stream: S,
     leftover: BytesMut,
-) -> (mpsc::Receiver<Bytes>, mpsc::Sender<Bytes>) {
-    let (read_half, write_half) = stream.into_split();
+) -> (mpsc::Receiver<Bytes>, mpsc::Sender<Bytes>)
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    let (read_half, write_half) = split(stream);
     let (in_tx, in_rx) = mpsc::channel(256);
     let (out_tx, out_rx) = mpsc::channel::<Bytes>(256);
     tokio::spawn(read_task(read_half, leftover, in_tx));
@@ -33,7 +48,11 @@ pub(crate) fn spawn_io_tasks(
     (in_rx, out_tx)
 }
 
-async fn read_task(mut read_half: OwnedReadHalf, mut buf: BytesMut, in_tx: mpsc::Sender<Bytes>) {
+async fn read_task<S: AsyncRead + Send + 'static>(
+    mut read_half: ReadHalf<S>,
+    mut buf: BytesMut,
+    in_tx: mpsc::Sender<Bytes>,
+) {
     loop {
         while let Frame::Message(raw) = extract_frame(&mut buf) {
             if in_tx.send(raw).await.is_err() {
@@ -47,7 +66,10 @@ async fn read_task(mut read_half: OwnedReadHalf, mut buf: BytesMut, in_tx: mpsc:
     }
 }
 
-async fn write_task(mut write_half: OwnedWriteHalf, mut out_rx: mpsc::Receiver<Bytes>) {
+async fn write_task<S: AsyncWrite + Send + 'static>(
+    mut write_half: WriteHalf<S>,
+    mut out_rx: mpsc::Receiver<Bytes>,
+) {
     while let Some(raw) = out_rx.recv().await {
         if write_half.write_all(&raw).await.is_err() {
             return;
@@ -62,13 +84,17 @@ async fn write_task(mut write_half: OwnedWriteHalf, mut out_rx: mpsc::Receiver<B
 pub(crate) async fn run_acceptor(
     listener: tokio::net::TcpListener,
     registry: Arc<HashMap<SessionKey, SessionHandle>>,
+    tls: Tls,
 ) {
+    let tls = Arc::new(tls);
     loop {
         match listener.accept().await {
             Ok((stream, peer)) => {
+                let _ = stream.set_nodelay(true);
                 let registry = registry.clone();
+                let tls = tls.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = identify_and_attach(stream, &registry).await {
+                    if let Err(e) = accept_connection(stream, &registry, &tls).await {
                         tracing::warn!("connection from {peer} rejected: {e}");
                     }
                 });
@@ -81,13 +107,34 @@ pub(crate) async fn run_acceptor(
     }
 }
 
+/// Complete the (optional) TLS handshake, then identify and attach.
+async fn accept_connection(
+    stream: TcpStream,
+    registry: &HashMap<SessionKey, SessionHandle>,
+    tls: &Tls,
+) -> std::result::Result<(), String> {
+    match tls {
+        Tls::None => handle_connection(stream, registry).await,
+        #[cfg(feature = "tls")]
+        Tls::Server(acceptor) => {
+            let stream =
+                acceptor.accept(stream).await.map_err(|e| format!("TLS handshake failed: {e}"))?;
+            handle_connection(stream, registry).await
+        }
+        #[cfg(feature = "tls")]
+        Tls::Client(_) => Err("acceptor was given client TLS config".into()),
+    }
+}
+
 /// Read the first frame off a fresh inbound connection, derive the session
 /// identity (peer CompIDs reversed), and hand the connection to that session.
-async fn identify_and_attach(
-    mut stream: TcpStream,
+async fn handle_connection<S>(
+    mut stream: S,
     registry: &HashMap<SessionKey, SessionHandle>,
-) -> std::result::Result<(), String> {
-    let _ = stream.set_nodelay(true);
+) -> std::result::Result<(), String>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
     let mut buf = BytesMut::with_capacity(8192);
     let first = tokio::time::timeout(Duration::from_secs(30), async {
         loop {
@@ -172,27 +219,23 @@ pub(crate) async fn run_initiator(
     port: u16,
     reconnect_interval: Duration,
     handle: SessionHandle,
+    tls: Tls,
 ) {
     loop {
         match TcpStream::connect((host.as_str(), port)).await {
             Ok(stream) => {
                 let _ = stream.set_nodelay(true);
-                let (in_rx, out_tx) = spawn_io_tasks(stream, BytesMut::with_capacity(8192));
-                let (disc_tx, disc_rx) = oneshot::channel();
-                if handle
-                    .cmd_tx
-                    .send(Command::Attach(Connection {
-                        inbound: in_rx,
-                        outbound: out_tx,
-                        disconnected: Some(disc_tx),
-                    }))
-                    .await
-                    .is_err()
-                {
-                    return; // session stopped
+                let disconnected = attach_initiator(stream, &handle, &tls).await;
+                match disconnected {
+                    Ok(Some(disc_rx)) => {
+                        // Wait until the session detaches (drops the sender).
+                        let _ = disc_rx.await;
+                    }
+                    Ok(None) => return, // session stopped
+                    Err(e) => {
+                        tracing::info!(session = %handle.id, "TLS/connect setup failed: {e}");
+                    }
                 }
-                // Wait until the session detaches (drops the sender).
-                let _ = disc_rx.await;
             }
             Err(e) => {
                 tracing::info!(session = %handle.id, "connect to {host}:{port} failed: {e}");
@@ -200,4 +243,43 @@ pub(crate) async fn run_initiator(
         }
         tokio::time::sleep(reconnect_interval).await;
     }
+}
+
+/// Complete the (optional) client TLS handshake, then attach the connection.
+/// Returns the "disconnected" receiver to await, `None` if the session
+/// stopped, or an error if setup failed.
+async fn attach_initiator(
+    stream: TcpStream,
+    handle: &SessionHandle,
+    tls: &Tls,
+) -> std::result::Result<Option<oneshot::Receiver<()>>, String> {
+    let (in_rx, out_tx) = match tls {
+        Tls::None => spawn_io_tasks(stream, BytesMut::with_capacity(8192)),
+        #[cfg(feature = "tls")]
+        Tls::Client(client) => {
+            let stream = client
+                .connector
+                .connect(client.server_name.clone(), stream)
+                .await
+                .map_err(|e| format!("TLS handshake failed: {e}"))?;
+            spawn_io_tasks(stream, BytesMut::with_capacity(8192))
+        }
+        #[cfg(feature = "tls")]
+        Tls::Server(_) => return Err("initiator was given server TLS config".into()),
+    };
+
+    let (disc_tx, disc_rx) = oneshot::channel();
+    if handle
+        .cmd_tx
+        .send(Command::Attach(Connection {
+            inbound: in_rx,
+            outbound: out_tx,
+            disconnected: Some(disc_tx),
+        }))
+        .await
+        .is_err()
+    {
+        return Ok(None); // session stopped
+    }
+    Ok(Some(disc_rx))
 }
