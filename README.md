@@ -1,5 +1,6 @@
 # quickfix-tokio
 
+[![CI](https://github.com/debdattabasu/quickfix-tokio/actions/workflows/ci.yml/badge.svg)](https://github.com/debdattabasu/quickfix-tokio/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/quickfix-tokio.svg)](https://crates.io/crates/quickfix-tokio)
 [![Documentation](https://docs.rs/quickfix-tokio/badge.svg)](https://docs.rs/quickfix-tokio)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
