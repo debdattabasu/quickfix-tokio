@@ -153,9 +153,24 @@ feature off. Repeating groups are structs with the same accessor pattern
 (`order.set_no_party_ids([...])`). Message structs `Deref` to
 [`Message`](src/message.rs) for anything not covered.
 
+**FIX 5.0 and FIXT.1.1** typed messages ship too, behind the opt-in `fix50`
+(application messages) and `fixt11` (session/transport messages — the layer
+FIX 5.0 rides on) features. They're off by default because each generates
+several MB of code; enable what you use:
+
+```toml
+quickfix-tokio = { version = "0.2", features = ["fix50", "fixt11"] }
+```
+
+The modules mirror `fix44` exactly — `fix50::messages::new_order_single`,
+`fixt11::messages::logon`, each with its own `fields`, `classify`, and
+`AnyMessage`. (The engine already speaks FIXT.1.1 at the session layer
+regardless of these features; they add the *typed* message surface.)
+
 The generator is part of the crate: `cargo run --bin generate-fix --
-spec/FIX42.xml src/fix42` regenerates or targets another FIX version.
-Generated code is committed; re-run only when specs change.
+spec/FIX42.xml src/fix42` regenerates or targets another FIX version (e.g.
+`spec/FIX50SP2.xml` for the SP2 dictionary). Generated code is committed;
+re-run only when specs change.
 
 ## Architecture
 

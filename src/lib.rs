@@ -33,6 +33,10 @@ pub mod datadictionary;
 pub mod engine;
 #[cfg(feature = "fix44")]
 pub mod fix44;
+#[cfg(feature = "fix50")]
+pub mod fix50;
+#[cfg(feature = "fixt11")]
+pub mod fixt11;
 pub mod error;
 pub mod field_map;
 pub mod log;

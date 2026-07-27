@@ -116,9 +116,12 @@ that way:
   don't try to make them pass.
 - **Feature flags:** `fix44` (typed messages), `tls` (rustls), `decimal`
   (exact `rust_decimal::Decimal` for price/qty/amount fields) — all on by
-  default. `crate::Amount` aliases `Decimal` with `decimal`, else `f64`.
-  Typed accessors take/return `Amount`, so example and test code uses the
-  `dec!()` macro, not `f64` literals, under the default feature set.
+  default. `fix50` (FIX 5.0 app messages) and `fixt11` (FIXT.1.1 session
+  messages) are opt-in — each generates several MB of code, so they're kept
+  out of `default` to keep normal builds fast. `crate::Amount` aliases
+  `Decimal` with `decimal`, else `f64`. Typed accessors take/return `Amount`,
+  so example and test code uses the `dec!()` macro, not `f64` literals, under
+  the default feature set.
 - **Comments** explain *why* / cite the reference, not *what*. Match the
   density and idiom of the surrounding file. Reference-derived behavior often
   carries a short note pointing at the source engine.

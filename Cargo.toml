@@ -1,6 +1,6 @@
 [package]
 name = "quickfix-tokio"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 description = "A pure-Rust FIX protocol engine built natively on tokio"
@@ -17,8 +17,13 @@ exclude = ["/reference", "/target"]
 
 [features]
 default = ["fix44", "tls", "decimal"]
-# Typed messages generated from spec/FIX44.xml (see src/bin/generate-fix.rs).
+# Typed messages generated from the spec XML (see src/bin/generate-fix.rs).
+# fix44 is on by default; fix50 (FIX 5.0 application messages) and fixt11
+# (FIXT.1.1 session messages — the transport layer FIX 5.0 rides on) are
+# opt-in because each generates several MB of code. Enable what you use.
 fix44 = []
+fix50 = []
+fixt11 = []
 # TLS transport via rustls (SocketUseSSL=Y). Pure Rust, no OpenSSL.
 tls = ["dep:tokio-rustls", "dep:rustls-pemfile"]
 # Exact fixed-point decimal (rust_decimal) for typed price/qty/amount fields.
